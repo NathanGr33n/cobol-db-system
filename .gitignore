@@ -1,0 +1,25 @@
+# Compiled executables
+bin/
+*.exe
+*.dll
+
+# GnuCOBOL intermediate files
+*.o
+*.obj
+*.lst
+*.int
+*.gnt
+*.idy
+
+# Data files (generated at runtime)
+data/*.dat
+data/*.idx
+
+# Editor and OS artifacts
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
