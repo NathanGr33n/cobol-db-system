@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS CUSTOMERS (
     CREATED_AT   DATE         NOT NULL DEFAULT CURRENT_DATE
 );
 
-CREATE INDEX idx_customers_email ON CUSTOMERS (EMAIL);
-CREATE INDEX idx_customers_name  ON CUSTOMERS (LAST_NAME, FIRST_NAME);
+CREATE INDEX IF NOT EXISTS idx_customers_email ON CUSTOMERS (EMAIL);
+CREATE INDEX IF NOT EXISTS idx_customers_name  ON CUSTOMERS (LAST_NAME, FIRST_NAME);
 
 -- ----------------------------------------------------------
 -- ACCOUNTS
@@ -35,8 +35,8 @@ CREATE TABLE IF NOT EXISTS ACCOUNTS (
                                CHECK (STATUS IN ('ACTIVE', 'CLOSED'))
 );
 
-CREATE INDEX idx_accounts_customer ON ACCOUNTS (CUSTOMER_ID);
-CREATE INDEX idx_accounts_status   ON ACCOUNTS (STATUS);
+CREATE INDEX IF NOT EXISTS idx_accounts_customer ON ACCOUNTS (CUSTOMER_ID);
+CREATE INDEX IF NOT EXISTS idx_accounts_status   ON ACCOUNTS (STATUS);
 
 -- ----------------------------------------------------------
 -- TRANSACTIONS
@@ -53,8 +53,8 @@ CREATE TABLE IF NOT EXISTS TRANSACTIONS (
     CREATED_AT TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_txn_account    ON TRANSACTIONS (ACCOUNT_ID);
-CREATE INDEX idx_txn_created_at ON TRANSACTIONS (CREATED_AT);
+CREATE INDEX IF NOT EXISTS idx_txn_account    ON TRANSACTIONS (ACCOUNT_ID);
+CREATE INDEX IF NOT EXISTS idx_txn_created_at ON TRANSACTIONS (CREATED_AT);
 
 -- ----------------------------------------------------------
 -- AUDIT_LOG
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS AUDIT_LOG (
     CREATED_AT TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_audit_created_at ON AUDIT_LOG (CREATED_AT);
+CREATE INDEX IF NOT EXISTS idx_audit_created_at ON AUDIT_LOG (CREATED_AT);
 
 -- ----------------------------------------------------------
 -- Trigger: auto-log account balance changes
