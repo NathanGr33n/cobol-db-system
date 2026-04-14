@@ -75,6 +75,11 @@
        01  WS-INPUT-ID             PIC 9(8)       VALUE ZEROS.
 
       ******************************************************************
+      * Database Configuration
+      ******************************************************************
+           COPY 'cpy/dbconfig.cpy'.
+
+      ******************************************************************
       * Display Formatting
       ******************************************************************
        01  WS-SEPARATOR            PIC X(70)      VALUE ALL '-'.
@@ -98,7 +103,7 @@
       ******************************************************************
        1000-INITIALIZE.
            EXEC SQL
-               CONNECT TO 'cobol_bank'
+               CONNECT TO :WS-DB-NAME
            END-EXEC
 
            IF SQLCODE NOT = ZERO
