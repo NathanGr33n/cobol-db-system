@@ -41,6 +41,8 @@
            88 WS-EXIT                           VALUE 'N' 'n'.
        01  WS-SAVED-SQLCODE        PIC S9(9)    VALUE ZEROS.
        01  WS-RECORD-COUNT         PIC 9(6)     VALUE ZEROS.
+       01  WS-AT-COUNT             PIC 9        VALUE ZEROS.
+       01  WS-INPUT-LEN            PIC 9(3)     VALUE ZEROS.
        01  WS-EOF-FLAG             PIC X        VALUE 'N'.
            88 WS-EOF                            VALUE 'Y'.
            88 WS-NOT-EOF                        VALUE 'N'.
@@ -117,27 +119,51 @@
            DISPLAY SPACES
            DISPLAY '--- CREATE NEW CUSTOMER ---'
 
-           DISPLAY 'Enter First Name: ' WITH NO ADVANCING
+           DISPLAY 'Enter First Name (max 50): ' WITH NO ADVANCING
            ACCEPT WS-FIRST-NAME
-           IF FUNCTION LENGTH(FUNCTION TRIM(WS-FIRST-NAME))
-               = ZERO
+           COMPUTE WS-INPUT-LEN =
+               FUNCTION LENGTH(FUNCTION TRIM(WS-FIRST-NAME))
+           IF WS-INPUT-LEN = ZERO
                DISPLAY 'ERROR: First name is required.'
                GO TO 3000-EXIT
            END-IF
-
-           DISPLAY 'Enter Last Name: ' WITH NO ADVANCING
-           ACCEPT WS-LAST-NAME
-           IF FUNCTION LENGTH(FUNCTION TRIM(WS-LAST-NAME))
-               = ZERO
-               DISPLAY 'ERROR: Last name is required.'
+           IF WS-INPUT-LEN > 50
+               DISPLAY 'ERROR: First name exceeds 50 characters.'
                GO TO 3000-EXIT
            END-IF
 
-           DISPLAY 'Enter Email: ' WITH NO ADVANCING
+           DISPLAY 'Enter Last Name (max 50): ' WITH NO ADVANCING
+           ACCEPT WS-LAST-NAME
+           COMPUTE WS-INPUT-LEN =
+               FUNCTION LENGTH(FUNCTION TRIM(WS-LAST-NAME))
+           IF WS-INPUT-LEN = ZERO
+               DISPLAY 'ERROR: Last name is required.'
+               GO TO 3000-EXIT
+           END-IF
+           IF WS-INPUT-LEN > 50
+               DISPLAY 'ERROR: Last name exceeds 50 characters.'
+               GO TO 3000-EXIT
+           END-IF
+
+           DISPLAY 'Enter Email (max 100): ' WITH NO ADVANCING
            ACCEPT WS-EMAIL
-           IF FUNCTION LENGTH(FUNCTION TRIM(WS-EMAIL))
-               = ZERO
+           COMPUTE WS-INPUT-LEN =
+               FUNCTION LENGTH(FUNCTION TRIM(WS-EMAIL))
+           IF WS-INPUT-LEN = ZERO
                DISPLAY 'ERROR: Email is required.'
+               GO TO 3000-EXIT
+           END-IF
+           IF WS-INPUT-LEN > 100
+               DISPLAY 'ERROR: Email exceeds 100 characters.'
+               GO TO 3000-EXIT
+           END-IF
+
+      *    Validate email format: must contain exactly one @
+           MOVE ZERO TO WS-AT-COUNT
+           INSPECT WS-EMAIL TALLYING WS-AT-COUNT
+               FOR ALL '@'
+           IF WS-AT-COUNT NOT = 1
+               DISPLAY 'ERROR: Invalid email format.'
                GO TO 3000-EXIT
            END-IF
 
