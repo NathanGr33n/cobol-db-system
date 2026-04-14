@@ -46,6 +46,10 @@
        01  WS-EOF-FLAG             PIC X        VALUE 'N'.
            88 WS-EOF                            VALUE 'Y'.
            88 WS-NOT-EOF                        VALUE 'N'.
+       01  WS-CONFIRM              PIC X        VALUE SPACES.
+       01  WS-ACCOUNT-COUNT        PIC 9(4)     VALUE ZEROS.
+       01  WS-SEARCH-TERM          PIC X(50)    VALUE SPACES.
+       01  WS-SEARCH-PATTERN       PIC X(54)    VALUE SPACES.
 
       ******************************************************************
       * Database Configuration
@@ -98,6 +102,9 @@
            DISPLAY '  1. Create New Customer'
            DISPLAY '  2. Retrieve Customer by ID'
            DISPLAY '  3. List All Customers'
+           DISPLAY '  4. Update Customer'
+           DISPLAY '  5. Delete Customer'
+           DISPLAY '  6. Search Customers'
            DISPLAY '  9. Exit'
            DISPLAY WS-SEPARATOR
            DISPLAY 'Enter choice: ' WITH NO ADVANCING
@@ -110,6 +117,12 @@
                    PERFORM 4000-RETRIEVE-CUSTOMER
                WHEN 3
                    PERFORM 5000-LIST-CUSTOMERS
+               WHEN 4
+                   PERFORM 6000-UPDATE-CUSTOMER
+               WHEN 5
+                   PERFORM 7000-DELETE-CUSTOMER
+               WHEN 6
+                   PERFORM 7500-SEARCH-CUSTOMERS
                WHEN 9
                    SET WS-EXIT TO TRUE
                WHEN OTHER
@@ -307,6 +320,232 @@
                FETCH CSR-CUSTOMERS
                INTO :WS-CUSTOMER-ID, :WS-FIRST-NAME,
                     :WS-LAST-NAME, :WS-EMAIL, :WS-CREATED-AT
+           END-EXEC
+
+           IF SQLCODE = ZERO
+               ADD 1 TO WS-RECORD-COUNT
+               MOVE WS-CUSTOMER-ID TO WS-DISPLAY-ID
+               DISPLAY '  ID: ' WS-DISPLAY-ID
+                   '  Name: '
+                   FUNCTION TRIM(WS-FIRST-NAME) ' '
+                   FUNCTION TRIM(WS-LAST-NAME)
+                   '  Email: '
+                   FUNCTION TRIM(WS-EMAIL)
+           ELSE
+               SET WS-EOF TO TRUE
+               IF SQLCODE NOT = 100
+                   DISPLAY 'ERROR: Fetch error. SQLCODE: '
+                       SQLCODE
+               END-IF
+           END-IF
+           .
+
+      ******************************************************************
+      * Update customer details
+      ******************************************************************
+       6000-UPDATE-CUSTOMER.
+           DISPLAY SPACES
+           DISPLAY '--- UPDATE CUSTOMER ---'
+           DISPLAY 'Enter Customer ID: ' WITH NO ADVANCING
+           ACCEPT WS-CUSTOMER-ID
+
+           IF WS-CUSTOMER-ID = ZEROS
+               DISPLAY 'ERROR: Invalid Customer ID.'
+               GO TO 6000-EXIT
+           END-IF
+
+      *    Fetch current data
+           EXEC SQL
+               SELECT FIRST_NAME, LAST_NAME, EMAIL
+               INTO :WS-FIRST-NAME, :WS-LAST-NAME, :WS-EMAIL
+               FROM CUSTOMERS
+               WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
+           END-EXEC
+
+           IF SQLCODE = 100
+               DISPLAY 'INFO: No customer found with ID '
+                   WS-CUSTOMER-ID
+               GO TO 6000-EXIT
+           END-IF
+
+           DISPLAY '  Current First Name: '
+               FUNCTION TRIM(WS-FIRST-NAME)
+           DISPLAY '  Current Last Name : '
+               FUNCTION TRIM(WS-LAST-NAME)
+           DISPLAY '  Current Email     : '
+               FUNCTION TRIM(WS-EMAIL)
+           DISPLAY SPACES
+
+           DISPLAY 'New First Name (blank=keep): '
+               WITH NO ADVANCING
+           ACCEPT WS-FIRST-NAME
+
+           DISPLAY 'New Last Name (blank=keep): '
+               WITH NO ADVANCING
+           ACCEPT WS-LAST-NAME
+
+           DISPLAY 'New Email (blank=keep): '
+               WITH NO ADVANCING
+           ACCEPT WS-EMAIL
+
+           EXEC SQL
+               UPDATE CUSTOMERS
+               SET FIRST_NAME = :WS-FIRST-NAME,
+                   LAST_NAME  = :WS-LAST-NAME,
+                   EMAIL      = :WS-EMAIL
+               WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
+           END-EXEC
+
+           IF SQLCODE = ZERO
+               EXEC SQL COMMIT END-EXEC
+               DISPLAY 'SUCCESS: Customer updated.'
+           ELSE
+               MOVE SQLCODE TO WS-SAVED-SQLCODE
+               EXEC SQL ROLLBACK END-EXEC
+               IF WS-SAVED-SQLCODE = -803
+                   DISPLAY 'ERROR: Email already in use.'
+               ELSE
+                   DISPLAY 'ERROR: Update failed. SQLCODE: '
+                       WS-SAVED-SQLCODE
+               END-IF
+           END-IF
+           .
+       6000-EXIT.
+           EXIT
+           .
+
+      ******************************************************************
+      * Delete customer (with FK check)
+      ******************************************************************
+       7000-DELETE-CUSTOMER.
+           DISPLAY SPACES
+           DISPLAY '--- DELETE CUSTOMER ---'
+           DISPLAY 'Enter Customer ID: ' WITH NO ADVANCING
+           ACCEPT WS-CUSTOMER-ID
+
+           IF WS-CUSTOMER-ID = ZEROS
+               DISPLAY 'ERROR: Invalid Customer ID.'
+               GO TO 7000-EXIT
+           END-IF
+
+      *    Verify customer exists
+           EXEC SQL
+               SELECT FIRST_NAME, LAST_NAME
+               INTO :WS-FIRST-NAME, :WS-LAST-NAME
+               FROM CUSTOMERS
+               WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
+           END-EXEC
+
+           IF SQLCODE = 100
+               DISPLAY 'INFO: No customer found with ID '
+                   WS-CUSTOMER-ID
+               GO TO 7000-EXIT
+           END-IF
+
+      *    Check for linked accounts
+           EXEC SQL
+               SELECT COUNT(*)
+               INTO :WS-ACCOUNT-COUNT
+               FROM ACCOUNTS
+               WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
+           END-EXEC
+
+           IF WS-ACCOUNT-COUNT > ZERO
+               DISPLAY 'ERROR: Customer has '
+                   WS-ACCOUNT-COUNT ' account(s).'
+               DISPLAY '  Close all accounts before deleting.'
+               GO TO 7000-EXIT
+           END-IF
+
+           DISPLAY '  Customer: '
+               FUNCTION TRIM(WS-FIRST-NAME) ' '
+               FUNCTION TRIM(WS-LAST-NAME)
+           DISPLAY 'Confirm delete? (Y/N): '
+               WITH NO ADVANCING
+           ACCEPT WS-CONFIRM
+
+           IF WS-CONFIRM NOT = 'Y' AND WS-CONFIRM NOT = 'y'
+               DISPLAY 'Delete cancelled.'
+               GO TO 7000-EXIT
+           END-IF
+
+           EXEC SQL
+               DELETE FROM CUSTOMERS
+               WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
+           END-EXEC
+
+           IF SQLCODE = ZERO
+               EXEC SQL COMMIT END-EXEC
+               DISPLAY 'SUCCESS: Customer deleted.'
+           ELSE
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'ERROR: Delete failed. SQLCODE: ' SQLCODE
+           END-IF
+           .
+       7000-EXIT.
+           EXIT
+           .
+
+      ******************************************************************
+      * Search customers by name or email
+      ******************************************************************
+       7500-SEARCH-CUSTOMERS.
+           DISPLAY SPACES
+           DISPLAY '--- SEARCH CUSTOMERS ---'
+           DISPLAY 'Enter search term: ' WITH NO ADVANCING
+           ACCEPT WS-SEARCH-TERM
+
+           IF FUNCTION LENGTH(FUNCTION TRIM(WS-SEARCH-TERM))
+               = ZERO
+               DISPLAY 'ERROR: Search term is required.'
+               GO TO 7500-EXIT
+           END-IF
+
+           STRING '%' FUNCTION TRIM(WS-SEARCH-TERM) '%'
+               DELIMITED SIZE INTO WS-SEARCH-PATTERN
+           END-STRING
+
+           MOVE ZERO TO WS-RECORD-COUNT
+           SET WS-NOT-EOF TO TRUE
+
+           EXEC SQL
+               DECLARE CSR-SEARCH CURSOR FOR
+               SELECT CUSTOMER_ID, FIRST_NAME, LAST_NAME,
+                      EMAIL
+               FROM CUSTOMERS
+               WHERE UPPER(FIRST_NAME) LIKE UPPER(:WS-SEARCH-PATTERN)
+                  OR UPPER(LAST_NAME)  LIKE UPPER(:WS-SEARCH-PATTERN)
+                  OR UPPER(EMAIL)      LIKE UPPER(:WS-SEARCH-PATTERN)
+               ORDER BY CUSTOMER_ID
+           END-EXEC
+
+           EXEC SQL OPEN CSR-SEARCH END-EXEC
+
+           IF SQLCODE NOT = ZERO
+               DISPLAY 'ERROR: Search failed. SQLCODE: ' SQLCODE
+               GO TO 7500-EXIT
+           END-IF
+
+           DISPLAY SPACES
+           DISPLAY '--- SEARCH RESULTS ---'
+           DISPLAY WS-SEPARATOR
+
+           PERFORM 7510-FETCH-SEARCH UNTIL WS-EOF
+
+           EXEC SQL CLOSE CSR-SEARCH END-EXEC
+
+           DISPLAY WS-SEPARATOR
+           DISPLAY 'Results found: ' WS-RECORD-COUNT
+           .
+       7500-EXIT.
+           EXIT
+           .
+
+       7510-FETCH-SEARCH.
+           EXEC SQL
+               FETCH CSR-SEARCH
+               INTO :WS-CUSTOMER-ID, :WS-FIRST-NAME,
+                    :WS-LAST-NAME, :WS-EMAIL
            END-EXEC
 
            IF SQLCODE = ZERO
