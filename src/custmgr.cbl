@@ -150,9 +150,8 @@
 
            IF SQLCODE = ZERO
                EXEC SQL
-                   SELECT MAX(CUSTOMER_ID)
+                   SELECT CURRVAL('customers_customer_id_seq')
                    INTO :WS-CUSTOMER-ID
-                   FROM CUSTOMERS
                END-EXEC
 
                EXEC SQL COMMIT END-EXEC

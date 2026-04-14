@@ -199,9 +199,8 @@
 
            IF SQLCODE = ZERO
                EXEC SQL
-                   SELECT MAX(ACCOUNT_ID)
+                   SELECT CURRVAL('accounts_account_id_seq')
                    INTO :WS-ACCOUNT-ID
-                   FROM ACCOUNTS
                END-EXEC
 
                EXEC SQL COMMIT END-EXEC
