@@ -11,6 +11,9 @@ bin/
 *.gnt
 *.idy
 
+# ocesql preprocessed output
+src/*.cob
+
 # Data files (generated at runtime)
 data/*.dat
 data/*.idx
