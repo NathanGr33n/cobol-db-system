@@ -47,6 +47,16 @@
        01  WS-ACCOUNT-STATUS        PIC X(20)      VALUE SPACES.
 
       ******************************************************************
+      * Transfer Variables
+      ******************************************************************
+       01  WS-FROM-ACCOUNT-ID       PIC 9(8)       VALUE ZEROS.
+       01  WS-TO-ACCOUNT-ID         PIC 9(8)       VALUE ZEROS.
+       01  WS-FROM-BALANCE          PIC S9(10)V99  VALUE ZEROS.
+       01  WS-TO-BALANCE            PIC S9(10)V99  VALUE ZEROS.
+       01  WS-FROM-STATUS           PIC X(20)      VALUE SPACES.
+       01  WS-TO-STATUS             PIC X(20)      VALUE SPACES.
+
+      ******************************************************************
       * Batch Processing Variables
       ******************************************************************
        01  WS-BATCH-LINE            PIC X(80)      VALUE SPACES.
@@ -132,7 +142,8 @@
            DISPLAY WS-SEPARATOR
            DISPLAY '  1. Process Deposit'
            DISPLAY '  2. Process Withdrawal'
-           DISPLAY '  3. Process Batch Transactions'
+           DISPLAY '  3. Transfer Between Accounts'
+           DISPLAY '  4. Process Batch Transactions'
            DISPLAY '  9. Exit'
            DISPLAY WS-SEPARATOR
            DISPLAY 'Enter choice: ' WITH NO ADVANCING
@@ -146,6 +157,8 @@
                    MOVE 'WITHDRAW' TO WS-TXN-TYPE
                    PERFORM 3000-GET-TRANSACTION-INPUT
                WHEN 3
+                   PERFORM 3500-PROCESS-TRANSFER
+               WHEN 4
                    PERFORM 6000-PROCESS-BATCH
                WHEN 9
                    SET WS-EXIT TO TRUE
@@ -181,6 +194,159 @@
            PERFORM 4000-EXECUTE-TRANSACTION
            .
        3000-EXIT.
+           EXIT
+           .
+
+      ******************************************************************
+      * Transfer between two accounts (atomic)
+      ******************************************************************
+       3500-PROCESS-TRANSFER.
+           DISPLAY SPACES
+           DISPLAY '--- ACCOUNT TRANSFER ---'
+
+           DISPLAY 'From Account ID: ' WITH NO ADVANCING
+           ACCEPT WS-FROM-ACCOUNT-ID
+           IF WS-FROM-ACCOUNT-ID = ZEROS
+               DISPLAY 'ERROR: Invalid From Account ID.'
+               GO TO 3500-EXIT
+           END-IF
+
+           DISPLAY 'To Account ID:   ' WITH NO ADVANCING
+           ACCEPT WS-TO-ACCOUNT-ID
+           IF WS-TO-ACCOUNT-ID = ZEROS
+               DISPLAY 'ERROR: Invalid To Account ID.'
+               GO TO 3500-EXIT
+           END-IF
+
+           IF WS-FROM-ACCOUNT-ID = WS-TO-ACCOUNT-ID
+               DISPLAY 'ERROR: Cannot transfer to same account.'
+               GO TO 3500-EXIT
+           END-IF
+
+           DISPLAY 'Transfer Amount: ' WITH NO ADVANCING
+           ACCEPT WS-AMOUNT
+           IF WS-AMOUNT <= ZEROS
+               DISPLAY 'ERROR: Amount must be greater than zero.'
+               GO TO 3500-EXIT
+           END-IF
+
+      *    Validate FROM account
+           EXEC SQL
+               SELECT BALANCE, STATUS
+               INTO :WS-FROM-BALANCE, :WS-FROM-STATUS
+               FROM ACCOUNTS
+               WHERE ACCOUNT_ID = :WS-FROM-ACCOUNT-ID
+           END-EXEC
+           IF SQLCODE NOT = ZERO
+               DISPLAY 'ERROR: From account not found.'
+               GO TO 3500-EXIT
+           END-IF
+           IF WS-FROM-STATUS NOT = 'ACTIVE'
+               DISPLAY 'ERROR: From account is not active.'
+               GO TO 3500-EXIT
+           END-IF
+           IF WS-AMOUNT > WS-FROM-BALANCE
+               MOVE WS-FROM-BALANCE TO WS-DISPLAY-BALANCE
+               DISPLAY 'ERROR: Insufficient funds.'
+               DISPLAY '  Available: ' WS-DISPLAY-BALANCE
+               GO TO 3500-EXIT
+           END-IF
+
+      *    Validate TO account
+           EXEC SQL
+               SELECT BALANCE, STATUS
+               INTO :WS-TO-BALANCE, :WS-TO-STATUS
+               FROM ACCOUNTS
+               WHERE ACCOUNT_ID = :WS-TO-ACCOUNT-ID
+           END-EXEC
+           IF SQLCODE NOT = ZERO
+               DISPLAY 'ERROR: To account not found.'
+               GO TO 3500-EXIT
+           END-IF
+           IF WS-TO-STATUS NOT = 'ACTIVE'
+               DISPLAY 'ERROR: To account is not active.'
+               GO TO 3500-EXIT
+           END-IF
+
+      *    Debit FROM account
+           COMPUTE WS-NEW-BALANCE =
+               WS-FROM-BALANCE - WS-AMOUNT
+           EXEC SQL
+               UPDATE ACCOUNTS
+               SET BALANCE = :WS-NEW-BALANCE
+               WHERE ACCOUNT_ID = :WS-FROM-ACCOUNT-ID
+           END-EXEC
+           IF SQLCODE NOT = ZERO
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'ERROR: Debit failed.'
+               GO TO 3500-EXIT
+           END-IF
+
+      *    Credit TO account
+           COMPUTE WS-NEW-BALANCE =
+               WS-TO-BALANCE + WS-AMOUNT
+           EXEC SQL
+               UPDATE ACCOUNTS
+               SET BALANCE = :WS-NEW-BALANCE
+               WHERE ACCOUNT_ID = :WS-TO-ACCOUNT-ID
+           END-EXEC
+           IF SQLCODE NOT = ZERO
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'ERROR: Credit failed.'
+               GO TO 3500-EXIT
+           END-IF
+
+      *    Record both sides as WITHDRAW/DEPOSIT
+           EXEC SQL
+               INSERT INTO TRANSACTIONS
+                   (ACCOUNT_ID, AMOUNT, TXN_TYPE)
+               VALUES
+                   (:WS-FROM-ACCOUNT-ID, :WS-AMOUNT, 'WITHDRAW')
+           END-EXEC
+           EXEC SQL
+               INSERT INTO TRANSACTIONS
+                   (ACCOUNT_ID, AMOUNT, TXN_TYPE)
+               VALUES
+                   (:WS-TO-ACCOUNT-ID, :WS-AMOUNT, 'DEPOSIT')
+           END-EXEC
+
+      *    Commit the atomic transfer
+           EXEC SQL COMMIT END-EXEC
+
+           IF SQLCODE = ZERO
+               MOVE WS-AMOUNT TO WS-DISPLAY-AMOUNT
+               DISPLAY 'SUCCESS: Transfer completed.'
+               DISPLAY '  Amount     : ' WS-DISPLAY-AMOUNT
+               COMPUTE WS-NEW-BALANCE =
+                   WS-FROM-BALANCE - WS-AMOUNT
+               MOVE WS-NEW-BALANCE TO WS-DISPLAY-BALANCE
+               DISPLAY '  From Acct  : ' WS-FROM-ACCOUNT-ID
+                   '  New Bal: ' WS-DISPLAY-BALANCE
+               COMPUTE WS-NEW-BALANCE =
+                   WS-TO-BALANCE + WS-AMOUNT
+               MOVE WS-NEW-BALANCE TO WS-DISPLAY-BALANCE
+               DISPLAY '  To Acct    : ' WS-TO-ACCOUNT-ID
+                   '  New Bal: ' WS-DISPLAY-BALANCE
+
+      *        Audit log
+               EXEC SQL
+                   INSERT INTO AUDIT_LOG
+                       (ACTION, STATUS, DETAILS)
+                   VALUES ('TRANSFER', 'SUCCESS',
+                       'Transfer ' ||
+                       CAST(:WS-AMOUNT AS VARCHAR(15)) ||
+                       ' from ' ||
+                       CAST(:WS-FROM-ACCOUNT-ID AS VARCHAR(8))
+                       || ' to ' ||
+                       CAST(:WS-TO-ACCOUNT-ID AS VARCHAR(8)))
+               END-EXEC
+               EXEC SQL COMMIT END-EXEC
+           ELSE
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'ERROR: Transfer commit failed.'
+           END-IF
+           .
+       3500-EXIT.
            EXIT
            .
 
