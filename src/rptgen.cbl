@@ -73,6 +73,11 @@
            88 WS-EOF                              VALUE 'Y'.
            88 WS-NOT-EOF                          VALUE 'N'.
        01  WS-INPUT-ID             PIC 9(8)       VALUE ZEROS.
+       01  WS-DATE-START            PIC X(10)      VALUE SPACES.
+       01  WS-DATE-END              PIC X(10)      VALUE SPACES.
+       01  WS-USE-DATES             PIC X          VALUE 'N'.
+           88 WS-FILTER-BY-DATE                    VALUE 'Y'.
+           88 WS-NO-DATE-FILTER                    VALUE 'N'.
 
       ******************************************************************
       * Database Configuration
@@ -277,6 +282,23 @@
                GO TO 4000-EXIT
            END-IF
 
+      *    Optional date range filter
+           DISPLAY 'Filter by date range? (Y/N): '
+               WITH NO ADVANCING
+           ACCEPT WS-USE-DATES
+
+           IF WS-FILTER-BY-DATE
+               DISPLAY 'Start date (YYYY-MM-DD): '
+                   WITH NO ADVANCING
+               ACCEPT WS-DATE-START
+               DISPLAY 'End date   (YYYY-MM-DD): '
+                   WITH NO ADVANCING
+               ACCEPT WS-DATE-END
+           ELSE
+               MOVE '1900-01-01' TO WS-DATE-START
+               MOVE '2099-12-31' TO WS-DATE-END
+           END-IF
+
            DISPLAY SPACES
            DISPLAY WS-DBL-SEPARATOR
            DISPLAY '  TRANSACTION HISTORY'
@@ -287,6 +309,11 @@
            DISPLAY '  Account Type   : '
                FUNCTION TRIM(WS-ACCOUNT-TYPE)
            DISPLAY '  Current Balance: ' WS-DISPLAY-BALANCE
+           IF WS-FILTER-BY-DATE
+               DISPLAY '  Date Range     : '
+                   FUNCTION TRIM(WS-DATE-START) ' to '
+                   FUNCTION TRIM(WS-DATE-END)
+           END-IF
            DISPLAY WS-SEPARATOR
 
            MOVE ZERO TO WS-RECORD-COUNT
@@ -299,6 +326,10 @@
                SELECT TXN_ID, AMOUNT, TXN_TYPE, CREATED_AT
                FROM TRANSACTIONS
                WHERE ACCOUNT_ID = :WS-INPUT-ID
+                 AND CREATED_AT >= CAST(:WS-DATE-START AS TIMESTAMP)
+                 AND CREATED_AT <
+                     CAST(:WS-DATE-END AS TIMESTAMP)
+                     + INTERVAL '1 day'
                ORDER BY CREATED_AT DESC
            END-EXEC
 
@@ -505,8 +536,33 @@
       ******************************************************************
        7000-AUDIT-LOG-REPORT.
            DISPLAY SPACES
+
+      *    Optional date range filter
+           DISPLAY 'Filter by date range? (Y/N): '
+               WITH NO ADVANCING
+           ACCEPT WS-USE-DATES
+
+           IF WS-FILTER-BY-DATE
+               DISPLAY 'Start date (YYYY-MM-DD): '
+                   WITH NO ADVANCING
+               ACCEPT WS-DATE-START
+               DISPLAY 'End date   (YYYY-MM-DD): '
+                   WITH NO ADVANCING
+               ACCEPT WS-DATE-END
+           ELSE
+               MOVE '1900-01-01' TO WS-DATE-START
+               MOVE '2099-12-31' TO WS-DATE-END
+           END-IF
+
            DISPLAY WS-DBL-SEPARATOR
-           DISPLAY '  AUDIT LOG REPORT (LAST 50 ENTRIES)'
+           DISPLAY '  AUDIT LOG REPORT'
+           IF WS-FILTER-BY-DATE
+               DISPLAY '  Date Range: '
+                   FUNCTION TRIM(WS-DATE-START) ' to '
+                   FUNCTION TRIM(WS-DATE-END)
+           ELSE
+               DISPLAY '  (Last 50 entries)'
+           END-IF
            DISPLAY WS-DBL-SEPARATOR
 
            MOVE ZERO TO WS-RECORD-COUNT
@@ -517,6 +573,10 @@
                SELECT LOG_ID, ACTION, STATUS,
                       DETAILS, CREATED_AT
                FROM AUDIT_LOG
+               WHERE CREATED_AT >= CAST(:WS-DATE-START AS TIMESTAMP)
+                 AND CREATED_AT <
+                     CAST(:WS-DATE-END AS TIMESTAMP)
+                     + INTERVAL '1 day'
                ORDER BY CREATED_AT DESC
                FETCH FIRST 50 ROWS ONLY
            END-EXEC
