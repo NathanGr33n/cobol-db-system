@@ -49,6 +49,7 @@
            88 WS-CONTINUE                         VALUE 'Y' 'y'.
            88 WS-EXIT                             VALUE 'N' 'n'.
        01  WS-CONFIRM              PIC X          VALUE SPACES.
+       01  WS-SAVED-SQLCODE        PIC S9(9)      VALUE ZEROS.
 
       ******************************************************************
       * Display Formatting
@@ -215,9 +216,10 @@
 
                PERFORM 8000-LOG-AUDIT
            ELSE
+               MOVE SQLCODE TO WS-SAVED-SQLCODE
                EXEC SQL ROLLBACK END-EXEC
                DISPLAY 'ERROR: Could not create account.'
-               DISPLAY 'SQLCODE: ' SQLCODE
+               DISPLAY 'SQLCODE: ' WS-SAVED-SQLCODE
            END-IF
            .
        3000-EXIT.
@@ -357,9 +359,10 @@
 
                PERFORM 8000-LOG-AUDIT
            ELSE
+               MOVE SQLCODE TO WS-SAVED-SQLCODE
                EXEC SQL ROLLBACK END-EXEC
                DISPLAY 'ERROR: Could not update status.'
-               DISPLAY 'SQLCODE: ' SQLCODE
+               DISPLAY 'SQLCODE: ' WS-SAVED-SQLCODE
            END-IF
            .
        5000-EXIT.
