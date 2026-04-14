@@ -39,6 +39,7 @@
        01  WS-CONTINUE-FLAG        PIC X        VALUE 'Y'.
            88 WS-CONTINUE                       VALUE 'Y' 'y'.
            88 WS-EXIT                           VALUE 'N' 'n'.
+       01  WS-SAVED-SQLCODE        PIC S9(9)    VALUE ZEROS.
        01  WS-RECORD-COUNT         PIC 9(6)     VALUE ZEROS.
        01  WS-EOF-FLAG             PIC X        VALUE 'N'.
            88 WS-EOF                            VALUE 'Y'.
@@ -162,13 +163,14 @@
 
                PERFORM 8000-LOG-AUDIT-SUCCESS
            ELSE
+               MOVE SQLCODE TO WS-SAVED-SQLCODE
                EXEC SQL ROLLBACK END-EXEC
 
-               IF SQLCODE = -803
+               IF WS-SAVED-SQLCODE = -803
                    DISPLAY 'ERROR: Email already exists.'
                ELSE
                    DISPLAY 'ERROR: Could not create customer.'
-                   DISPLAY 'SQLCODE: ' SQLCODE
+                   DISPLAY 'SQLCODE: ' WS-SAVED-SQLCODE
                END-IF
 
                PERFORM 8100-LOG-AUDIT-FAILURE
