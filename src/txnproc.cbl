@@ -69,6 +69,9 @@
        01  WS-EOF-FLAG              PIC X          VALUE 'N'.
            88 WS-EOF                               VALUE 'Y'.
            88 WS-NOT-EOF                           VALUE 'N'.
+       01  WS-TXN-SUCCESS-FLAG      PIC X          VALUE 'N'.
+           88 WS-TXN-SUCCESS                       VALUE 'Y'.
+           88 WS-TXN-FAILED                        VALUE 'N'.
 
       ******************************************************************
       * Counters for batch processing
@@ -180,6 +183,7 @@
       * Execute the transaction with full COMMIT/ROLLBACK safety
       ******************************************************************
        4000-EXECUTE-TRANSACTION.
+           SET WS-TXN-FAILED TO TRUE
       *    Step 1: Validate account exists and is active
            EXEC SQL
                SELECT BALANCE, STATUS
@@ -270,7 +274,8 @@
                GO TO 4000-EXIT
            END-IF
 
-      *    Step 7: Success - display results
+      *    Step 7: Mark success and display results
+           SET WS-TXN-SUCCESS TO TRUE
            MOVE WS-NEW-BALANCE TO WS-DISPLAY-BALANCE
            MOVE WS-AMOUNT TO WS-DISPLAY-AMOUNT
            DISPLAY 'SUCCESS: '
@@ -453,8 +458,8 @@
 
            PERFORM 4000-EXECUTE-TRANSACTION
 
-      *    Check if it succeeded by verifying SQLCODE
-           IF SQLCODE = ZERO
+      *    Check if the financial transaction succeeded
+           IF WS-TXN-SUCCESS
                ADD 1 TO WS-BATCH-SUCCESS
            ELSE
                ADD 1 TO WS-BATCH-FAILED
