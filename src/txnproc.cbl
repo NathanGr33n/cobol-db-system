@@ -41,6 +41,9 @@
        01  HV-AUDIT-STATUS       PIC X(20).
            EXEC SQL END DECLARE SECTION END-EXEC.
 
+      *> ----- Database Configuration -----
+           COPY 'dbconfig.cpy'.
+
       *> ----- Working Fields -----
        01  WS-MENU-CHOICE        PIC 9(1) VALUE 0.
        01  WS-CONTINUE-FLAG      PIC X(1) VALUE 'Y'.
@@ -74,8 +77,8 @@
       *> ============================================================
        1000-CONNECT-DB.
            EXEC SQL
-               CONNECT TO 'coboldb'
-               USER 'coboluser'
+               CONNECT TO :WS-DB-NAME
+               USER :WS-DB-USER
            END-EXEC
 
            IF SQLCODE NOT = 0
