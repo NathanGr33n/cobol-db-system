@@ -2,15 +2,27 @@
        PROGRAM-ID. RPTGEN.
       *> ============================================================
       *> REPORT GENERATOR
-      *> Produces account summaries and transaction history reports
-      *> using cursor-based multi-row processing.
+      *> Produces account summaries, transaction history, and
+      *> date-filtered reports. Supports both terminal display
+      *> and flat-file output to the reports/ directory.
       *> ============================================================
 
        ENVIRONMENT DIVISION.
        CONFIGURATION SECTION.
        REPOSITORY.
 
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT RPT-FILE ASSIGN TO WS-RPT-FILENAME
+               ORGANIZATION IS LINE SEQUENTIAL
+               FILE STATUS IS WS-RPT-STATUS.
+
        DATA DIVISION.
+
+       FILE SECTION.
+       FD  RPT-FILE.
+       01  RPT-RECORD             PIC X(132).
+
        WORKING-STORAGE SECTION.
 
       *> ----- SQL Communication Area -----
@@ -34,6 +46,8 @@
        01  HV-TOTAL-DEPOSITS     PIC S9(12)V99 COMP-3.
        01  HV-TOTAL-WITHDRAWALS  PIC S9(12)V99 COMP-3.
        01  HV-TXN-COUNT          PIC S9(9) COMP.
+       01  HV-START-DATE         PIC X(10).
+       01  HV-END-DATE           PIC X(10).
            EXEC SQL END DECLARE SECTION END-EXEC.
 
       *> ----- Database Configuration -----
@@ -47,6 +61,13 @@
        01  WS-DISPLAY-AMOUNT     PIC Z(9)9.99.
        01  WS-DISPLAY-TOTAL      PIC Z(12)9.99.
        01  WS-ROW-COUNT          PIC 9(5) VALUE 0.
+
+      *> ----- File Output Fields -----
+       01  WS-RPT-FILENAME       PIC X(80) VALUE SPACES.
+       01  WS-RPT-STATUS         PIC XX VALUE SPACES.
+       01  WS-RPT-LINE           PIC X(132) VALUE SPACES.
+       01  WS-FILE-OPEN-FLAG     PIC X(1) VALUE 'N'.
+           88 WS-FILE-OPEN       VALUE 'Y'.
 
        PROCEDURE DIVISION.
        0000-MAIN.
@@ -82,6 +103,8 @@
            DISPLAY "  1. Account Summary (All Accounts)"
            DISPLAY "  2. Transaction History by Account"
            DISPLAY "  3. Account Totals Summary"
+           DISPLAY "  4. Date-Filtered Transactions"
+           DISPLAY "  5. Export Account Summary to File"
            DISPLAY "  0. Exit"
            DISPLAY "========================================"
            DISPLAY "Enter choice: " WITH NO ADVANCING
@@ -94,6 +117,10 @@
                    PERFORM 4000-TRANSACTION-HISTORY
                WHEN 3
                    PERFORM 5000-ACCOUNT-TOTALS
+               WHEN 4
+                   PERFORM 6000-DATE-FILTERED-TXNS
+               WHEN 5
+                   PERFORM 7000-EXPORT-SUMMARY
                WHEN 0
                    MOVE 'N' TO WS-CONTINUE-FLAG
                WHEN OTHER
@@ -300,6 +327,193 @@
            END-IF
 
            DISPLAY "=============================================".
+
+      *> ============================================================
+      *> DATE-FILTERED TRANSACTIONS
+      *> ============================================================
+       6000-DATE-FILTERED-TXNS.
+           DISPLAY SPACES
+           DISPLAY "--- Date-Filtered Transactions ---"
+           DISPLAY "Account ID: " WITH NO ADVANCING
+           ACCEPT HV-ACCOUNT-ID
+
+           DISPLAY "Start Date (YYYY-MM-DD): " WITH NO ADVANCING
+           ACCEPT HV-START-DATE
+
+           DISPLAY "End Date   (YYYY-MM-DD): " WITH NO ADVANCING
+           ACCEPT HV-END-DATE
+
+           EXEC SQL
+               DECLARE CSR-DATE-TXN CURSOR FOR
+               SELECT TXN_ID,
+                      AMOUNT,
+                      TXN_TYPE,
+                      CREATED_AT
+               FROM   TRANSACTIONS
+               WHERE  ACCOUNT_ID = :HV-ACCOUNT-ID
+               AND    CREATED_AT >= CAST(:HV-START-DATE AS DATE)
+               AND    CREATED_AT <  CAST(:HV-END-DATE AS DATE)
+                                    + INTERVAL '1 day'
+               ORDER BY CREATED_AT DESC
+           END-EXEC
+
+           EXEC SQL OPEN CSR-DATE-TXN END-EXEC
+
+           IF SQLCODE NOT = 0
+               DISPLAY "ERROR: Could not open cursor."
+               DISPLAY "SQLCODE: " SQLCODE
+               EXIT PARAGRAPH
+           END-IF
+
+           DISPLAY "============================================="
+           DISPLAY " TRANSACTIONS - ACCOUNT " HV-ACCOUNT-ID
+           DISPLAY " FROM " HV-START-DATE " TO " HV-END-DATE
+           DISPLAY "============================================="
+           DISPLAY "TXN ID    TYPE       AMOUNT       DATE"
+           DISPLAY "---------------------------------------------"
+
+           MOVE 0 TO WS-ROW-COUNT
+           PERFORM 6100-FETCH-DATE-TXN
+               UNTIL SQLCODE NOT = 0
+
+           EXEC SQL CLOSE CSR-DATE-TXN END-EXEC
+
+           IF WS-ROW-COUNT = 0
+               DISPLAY "No transactions in date range."
+           ELSE
+               DISPLAY "---------------------------------------------"
+               DISPLAY "Total transactions: " WS-ROW-COUNT
+           END-IF.
+
+       6100-FETCH-DATE-TXN.
+           EXEC SQL
+               FETCH CSR-DATE-TXN
+               INTO  :HV-TXN-ID,
+                     :HV-AMOUNT,
+                     :HV-TXN-TYPE,
+                     :HV-TXN-DATE
+           END-EXEC
+
+           IF SQLCODE = 0
+               ADD 1 TO WS-ROW-COUNT
+               MOVE HV-AMOUNT TO WS-DISPLAY-AMOUNT
+               DISPLAY HV-TXN-ID "   "
+                       HV-TXN-TYPE "   $"
+                       WS-DISPLAY-AMOUNT "   "
+                       HV-TXN-DATE
+           END-IF.
+
+      *> ============================================================
+      *> EXPORT ACCOUNT SUMMARY TO FILE
+      *> Writes the account summary report to reports/ directory.
+      *> ============================================================
+       7000-EXPORT-SUMMARY.
+           DISPLAY SPACES
+           DISPLAY "--- Export Account Summary ---"
+
+           MOVE "reports/account_summary.txt"
+               TO WS-RPT-FILENAME
+
+           OPEN OUTPUT RPT-FILE
+           IF WS-RPT-STATUS NOT = "00"
+               DISPLAY "ERROR: Could not open report file."
+               DISPLAY "File status: " WS-RPT-STATUS
+               EXIT PARAGRAPH
+           END-IF
+
+           MOVE 'Y' TO WS-FILE-OPEN-FLAG
+
+           MOVE "============================================="
+               TO RPT-RECORD
+           WRITE RPT-RECORD
+           MOVE "         ACCOUNT SUMMARY REPORT"
+               TO RPT-RECORD
+           WRITE RPT-RECORD
+           MOVE "============================================="
+               TO RPT-RECORD
+           WRITE RPT-RECORD
+           MOVE "ACCT    CUSTOMER            TYPE"
+               TO RPT-RECORD
+           WRITE RPT-RECORD
+           MOVE "        STATUS   BALANCE"
+               TO RPT-RECORD
+           WRITE RPT-RECORD
+           MOVE "---------------------------------------------"
+               TO RPT-RECORD
+           WRITE RPT-RECORD
+
+           EXEC SQL
+               DECLARE CSR-FILE-SUMMARY CURSOR FOR
+               SELECT ACCOUNT_ID,
+                      CUSTOMER_ID,
+                      FIRST_NAME,
+                      LAST_NAME,
+                      BALANCE,
+                      ACCOUNT_TYPE,
+                      STATUS
+               FROM   v_account_summary
+           END-EXEC
+
+           EXEC SQL OPEN CSR-FILE-SUMMARY END-EXEC
+
+           IF SQLCODE NOT = 0
+               DISPLAY "ERROR: Could not open cursor."
+               CLOSE RPT-FILE
+               MOVE 'N' TO WS-FILE-OPEN-FLAG
+               EXIT PARAGRAPH
+           END-IF
+
+           MOVE 0 TO WS-ROW-COUNT
+           PERFORM 7100-FETCH-FILE-SUMMARY
+               UNTIL SQLCODE NOT = 0
+
+           EXEC SQL CLOSE CSR-FILE-SUMMARY END-EXEC
+
+           MOVE "---------------------------------------------"
+               TO RPT-RECORD
+           WRITE RPT-RECORD
+           STRING "Total accounts: " WS-ROW-COUNT
+               DELIMITED BY SIZE INTO WS-RPT-LINE
+           MOVE WS-RPT-LINE TO RPT-RECORD
+           WRITE RPT-RECORD
+
+           CLOSE RPT-FILE
+           MOVE 'N' TO WS-FILE-OPEN-FLAG
+
+           DISPLAY "Report exported to: " WS-RPT-FILENAME
+           DISPLAY "Total accounts: " WS-ROW-COUNT.
+
+       7100-FETCH-FILE-SUMMARY.
+           EXEC SQL
+               FETCH CSR-FILE-SUMMARY
+               INTO  :HV-ACCOUNT-ID,
+                     :HV-CUSTOMER-ID,
+                     :HV-FIRST-NAME,
+                     :HV-LAST-NAME,
+                     :HV-BALANCE,
+                     :HV-ACCOUNT-TYPE,
+                     :HV-STATUS
+           END-EXEC
+
+           IF SQLCODE = 0
+               ADD 1 TO WS-ROW-COUNT
+               MOVE HV-BALANCE TO WS-DISPLAY-BALANCE
+               MOVE SPACES TO WS-RPT-LINE
+               STRING HV-ACCOUNT-ID "   "
+                      HV-FIRST-NAME " "
+                      HV-LAST-NAME "   "
+                      HV-ACCOUNT-TYPE
+                   DELIMITED BY SIZE INTO WS-RPT-LINE
+               MOVE WS-RPT-LINE TO RPT-RECORD
+               WRITE RPT-RECORD
+               MOVE SPACES TO WS-RPT-LINE
+               STRING "        "
+                      HV-STATUS "   $"
+                      WS-DISPLAY-BALANCE
+                   DELIMITED BY SIZE INTO WS-RPT-LINE
+               MOVE WS-RPT-LINE TO RPT-RECORD
+               WRITE RPT-RECORD
+           END-IF.
 
       *> ============================================================
       *> DISCONNECT
