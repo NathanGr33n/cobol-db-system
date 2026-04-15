@@ -55,6 +55,9 @@
        01  HV-NEW-BALANCE        PIC S9(10)V99 COMP-3.
            EXEC SQL END DECLARE SECTION END-EXEC.
 
+      *> ----- Database Configuration -----
+           COPY 'dbconfig.cpy'.
+
       *> ----- Test Framework Fields -----
        01  WS-TEST-ID            PIC X(4).
        01  WS-TEST-DESC          PIC X(60).
@@ -101,8 +104,8 @@
       *> ============================================================
        1000-CONNECT-DB.
            EXEC SQL
-               CONNECT TO 'coboldb'
-               USER 'coboluser'
+               CONNECT TO :WS-DB-NAME
+               USER :WS-DB-USER
            END-EXEC
 
            IF SQLCODE NOT = 0
