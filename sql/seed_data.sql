@@ -17,13 +17,13 @@ INSERT INTO CUSTOMERS (FIRST_NAME, LAST_NAME, EMAIL, CREATED_AT) VALUES
 -- -----------------------------------------------------------
 -- Accounts
 -- -----------------------------------------------------------
-INSERT INTO ACCOUNTS (CUSTOMER_ID, BALANCE, ACCOUNT_TYPE, STATUS) VALUES
-    (1, 5000.00,  'CHECKING', 'ACTIVE'),
-    (1, 12000.00, 'SAVINGS',  'ACTIVE'),
-    (2, 3200.50,  'CHECKING', 'ACTIVE'),
-    (3, 750.00,   'SAVINGS',  'ACTIVE'),
-    (4, 0.00,     'CHECKING', 'CLOSED'),
-    (5, 9800.75,  'CHECKING', 'ACTIVE');
+INSERT INTO ACCOUNTS (CUSTOMER_ID, BALANCE, ACCOUNT_TYPE, STATUS, INTEREST_RATE) VALUES
+    (1, 5000.00,  'CHECKING', 'ACTIVE',  0.0000),
+    (1, 12000.00, 'SAVINGS',  'ACTIVE',  0.0250),
+    (2, 3200.50,  'CHECKING', 'ACTIVE',  0.0000),
+    (3, 750.00,   'SAVINGS',  'ACTIVE',  0.0250),
+    (4, 0.00,     'CHECKING', 'CLOSED',  0.0000),
+    (5, 9800.75,  'CHECKING', 'ACTIVE',  0.0000);
 
 -- -----------------------------------------------------------
 -- Transactions
