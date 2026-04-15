@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: coboldb
+      POSTGRES_USER: coboluser
+      POSTGRES_PASSWORD: cobolpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./sql/seed_data.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - ./sql/procedures.sql:/docker-entrypoint-initdb.d/03-procedures.sql:ro
+      - ./sql/views.sql:/docker-entrypoint-initdb.d/04-views.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coboluser -d coboldb"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: coboldb
+      DB_USER: coboluser
+      DB_PASSWORD: cobolpass
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
