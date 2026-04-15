@@ -25,6 +25,9 @@
        01  HV-BALANCE            PIC S9(10)V99 COMP-3.
        01  HV-ACCOUNT-TYPE       PIC X(20).
        01  HV-STATUS             PIC X(20).
+       01  HV-TXN-COUNT          PIC S9(9) COMP.
+       01  HV-AUDIT-ACTION       PIC X(50).
+       01  HV-AUDIT-STATUS       PIC X(20).
            EXEC SQL END DECLARE SECTION END-EXEC.
 
       *> ----- Database Configuration -----
@@ -186,6 +189,8 @@
 
       *> ============================================================
       *> UPDATE ACCOUNT STATUS
+      *> Includes closure safeguards: rejects closure when balance
+      *> is non-zero or recent transactions exist (last 30 days).
       *> ============================================================
        5000-UPDATE-STATUS.
            DISPLAY SPACES
@@ -207,6 +212,14 @@
                    EXIT PARAGRAPH
            END-EVALUATE
 
+      *>   Closure safeguards
+           IF HV-STATUS = "CLOSED"
+               PERFORM 5100-VALIDATE-CLOSURE
+               IF HV-STATUS NOT = "CLOSED"
+                   EXIT PARAGRAPH
+               END-IF
+           END-IF
+
            EXEC SQL
                UPDATE ACCOUNTS
                SET    STATUS = :HV-STATUS
@@ -215,12 +228,75 @@
 
            IF SQLCODE = 0
                EXEC SQL COMMIT END-EXEC
+               STRING "CLOSE ACCT " HV-ACCOUNT-ID
+                   DELIMITED BY SIZE INTO HV-AUDIT-ACTION
+               MOVE "SUCCESS" TO HV-AUDIT-STATUS
+               PERFORM 8000-WRITE-AUDIT
                DISPLAY "Account status updated to "
                        HV-STATUS "."
            ELSE
                EXEC SQL ROLLBACK END-EXEC
                DISPLAY "ERROR: Could not update status."
                DISPLAY "SQLCODE: " SQLCODE
+           END-IF.
+
+      *> ============================================================
+      *> VALIDATE CLOSURE
+      *> Checks balance is zero and no recent transactions.
+      *> Clears HV-STATUS on failure to signal rejection.
+      *> ============================================================
+       5100-VALIDATE-CLOSURE.
+      *>   Check current balance
+           EXEC SQL
+               SELECT BALANCE
+               INTO   :HV-BALANCE
+               FROM   ACCOUNTS
+               WHERE  ACCOUNT_ID = :HV-ACCOUNT-ID
+           END-EXEC
+
+           IF SQLCODE = 100
+               DISPLAY "ERROR: Account not found."
+               MOVE SPACES TO HV-STATUS
+               EXIT PARAGRAPH
+           END-IF
+           IF SQLCODE NOT = 0
+               DISPLAY "ERROR: Account lookup failed."
+               MOVE SPACES TO HV-STATUS
+               EXIT PARAGRAPH
+           END-IF
+
+           IF HV-BALANCE > 0
+               MOVE HV-BALANCE TO WS-DISPLAY-BALANCE
+               DISPLAY "ERROR: Cannot close account with"
+               DISPLAY "       balance of $" WS-DISPLAY-BALANCE
+               DISPLAY "       Withdraw or transfer funds first."
+               STRING "CLOSE ACCT " HV-ACCOUNT-ID
+                   DELIMITED BY SIZE INTO HV-AUDIT-ACTION
+               MOVE "FAILURE" TO HV-AUDIT-STATUS
+               PERFORM 8000-WRITE-AUDIT
+               MOVE SPACES TO HV-STATUS
+               EXIT PARAGRAPH
+           END-IF
+
+      *>   Check for recent transactions (last 30 days)
+           EXEC SQL
+               SELECT COUNT(*)
+               INTO   :HV-TXN-COUNT
+               FROM   TRANSACTIONS
+               WHERE  ACCOUNT_ID = :HV-ACCOUNT-ID
+               AND    CREATED_AT >= CURRENT_TIMESTAMP
+                                  - INTERVAL '30 days'
+           END-EXEC
+
+           IF HV-TXN-COUNT > 0
+               DISPLAY "ERROR: Cannot close account with"
+               DISPLAY "       recent transactions (last 30"
+               DISPLAY "       days). Count: " HV-TXN-COUNT
+               STRING "CLOSE ACCT " HV-ACCOUNT-ID
+                   DELIMITED BY SIZE INTO HV-AUDIT-ACTION
+               MOVE "FAILURE" TO HV-AUDIT-STATUS
+               PERFORM 8000-WRITE-AUDIT
+               MOVE SPACES TO HV-STATUS
            END-IF.
 
       *> ============================================================
@@ -275,6 +351,19 @@
                        HV-ACCOUNT-TYPE "  "
                        HV-STATUS
                DISPLAY "          $" WS-DISPLAY-BALANCE
+           END-IF.
+
+      *> ============================================================
+      *> AUDIT LOG
+      *> ============================================================
+       8000-WRITE-AUDIT.
+           EXEC SQL
+               INSERT INTO AUDIT_LOG (ACTION, STATUS)
+               VALUES (:HV-AUDIT-ACTION, :HV-AUDIT-STATUS)
+           END-EXEC
+
+           IF SQLCODE = 0
+               EXEC SQL COMMIT END-EXEC
            END-IF.
 
       *> ============================================================
