@@ -392,7 +392,8 @@
 
       *> ============================================================
       *> VALIDATE ACCOUNT - shared helper
-      *> Sets HV-BALANCE and HV-STATUS from the ACCOUNTS table.
+      *> Locks the row with FOR UPDATE to prevent concurrent
+      *> modification. Sets HV-BALANCE and HV-STATUS.
       *> On failure, displays error and sets HV-STATUS to spaces.
       *> ============================================================
        7000-VALIDATE-ACCOUNT.
@@ -403,6 +404,7 @@
                       :HV-STATUS
                FROM   ACCOUNTS
                WHERE  ACCOUNT_ID = :HV-ACCOUNT-ID
+               FOR UPDATE
            END-EXEC
 
            EVALUATE TRUE
