@@ -15,6 +15,20 @@ bin/
 data/*.dat
 data/*.idx
 
+# Report output (generated at runtime)
+reports/*.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Docker
+.docker/
+
 # Editor and OS artifacts
 *.swp
 *.swo
