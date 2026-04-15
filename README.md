@@ -1,192 +1,92 @@
-# Cobol-DB-System
+# COBOL-DB-System
 
-**COBOL + SQL/DB2 Integration Project**
+**Enterprise Banking Backend — COBOL + SQL + Modern REST API**
 
 ---
 
 ## Overview
 
-This project is a **simulation of an enterprise-grade banking backend system** built using COBOL and a relational database (DB2 or PostgreSQL for development). It demonstrates how legacy systems handle **customer data, account management, and financial transactions** using embedded SQL.
+A simulation of an enterprise-grade banking backend built with COBOL and embedded SQL. The system demonstrates how legacy mainframe applications handle customer data, account management, financial transactions, and reporting — then bridges that world with a modern Python REST API hitting the same database.
 
-The system is designed to mirror real-world mainframe applications by combining:
+### Key Capabilities
 
-* Transaction-safe database operations
-* Batch and real-time processing
-* Modular COBOL program structure
-
----
-
-## Goals
-
-* Implement **transaction-safe financial operations (COMMIT/ROLLBACK)**
-* Simulate **real-world banking workflows**
-* Bridge **legacy systems with modern development practices**
+* Transaction-safe operations with full COMMIT/ROLLBACK
+* Inter-account transfers with row-level locking (SELECT FOR UPDATE)
+* Batch processing (transactions and interest calculation)
+* Stored procedures for DB-side business logic
+* Database views for simplified reporting
+* Date-filtered and file-based report generation
+* REST API (FastAPI) sharing the same PostgreSQL database
+* Docker Compose for one-command setup
+* 21-case automated test suite
 
 ---
 
 ## System Architecture
 
 ```
-[ CLI / Input Layer ]
-          ↓
-[ COBOL Programs (Business Logic) ]
-          ↓
-[ Embedded SQL (EXEC SQL) ]
-          ↓
-[ Relational Database (DB2/PostgreSQL) ]
-```
-
-Optional modern extension:
-
-```
-[ Python API Layer ] → [ COBOL Backend ] → [ Database ]
+[ CLI / Input Layer ]           [ REST API (FastAPI) ]
+          |                              |
+[ COBOL Programs ]              [ Python / psycopg2 ]
+          |                              |
+[ Embedded SQL ]                [ Stored Procedures ]
+          |                              |
+          +--------- PostgreSQL ---------+
+                        |
+                [ Views / Audit Log ]
 ```
 
 ---
 
-## 🗃️ Database Schema
+## Database Schema
 
 ### CUSTOMERS
-
-Stores customer information.
-
-| Column      | Type         | Description           |
-| ----------- | ------------ | --------------------- |
-| CUSTOMER_ID | INT (PK)     | Unique customer ID    |
-| FIRST_NAME  | VARCHAR(50)  | First name            |
-| LAST_NAME   | VARCHAR(50)  | Last name             |
-| EMAIL       | VARCHAR(100) | Contact email         |
-| CREATED_AT  | DATE         | Account creation date |
-
----
+Primary entity. Fields: `CUSTOMER_ID`, `FIRST_NAME`, `LAST_NAME`, `EMAIL`, `CREATED_AT`.
 
 ### ACCOUNTS
-
-Stores bank account data.
-
-| Column       | Type          | Description       |
-| ------------ | ------------- | ----------------- |
-| ACCOUNT_ID   | INT (PK)      | Unique account ID |
-| CUSTOMER_ID  | INT (FK)      | Linked customer   |
-| BALANCE      | DECIMAL(12,2) | Current balance   |
-| ACCOUNT_TYPE | VARCHAR(20)   | Checking/Savings  |
-| STATUS       | VARCHAR(20)   | Active/Closed     |
-
----
+Linked to CUSTOMERS via FK. Fields: `ACCOUNT_ID`, `CUSTOMER_ID`, `BALANCE`, `ACCOUNT_TYPE` (CHECKING/SAVINGS), `STATUS` (ACTIVE/CLOSED), `INTEREST_RATE`.
 
 ### TRANSACTIONS
+Linked to ACCOUNTS via FK. Fields: `TXN_ID`, `ACCOUNT_ID`, `AMOUNT`, `TXN_TYPE` (DEPOSIT/WITHDRAW/TRANSFER/INTEREST), `CREATED_AT`.
 
-Stores financial transaction records.
-
-| Column     | Type          | Description        |
-| ---------- | ------------- | ------------------ |
-| TXN_ID     | INT (PK)      | Transaction ID     |
-| ACCOUNT_ID | INT (FK)      | Related account    |
-| AMOUNT     | DECIMAL(12,2) | Transaction amount |
-| TXN_TYPE   | VARCHAR(10)   | DEPOSIT/WITHDRAW   |
-| CREATED_AT | TIMESTAMP     | Timestamp          |
+### AUDIT_LOG
+Independent activity log. Fields: `LOG_ID`, `ACTION`, `STATUS` (SUCCESS/FAILURE), `CREATED_AT`.
 
 ---
 
-### AUDIT_LOG (Optional)
+## COBOL Programs
 
-Tracks system activity.
+| Program | Description |
+|---------|-------------|
+| `custmgr.cbl` | Create, retrieve, and list customers |
+| `acctmgr.cbl` | Create accounts, check balances, update status with closure safeguards |
+| `txnproc.cbl` | Process deposits/withdrawals with row locking, batch processing, audit logging |
+| `xfermgr.cbl` | Atomic inter-account transfers with dual-row locking and multi-table transactions |
+| `rptgen.cbl` | Account summaries, transaction history, date-filtered reports, file export |
+| `intcalc.cbl` | Batch monthly interest calculation for SAVINGS accounts |
 
-| Column     | Type        | Description         |
-| ---------- | ----------- | ------------------- |
-| LOG_ID     | INT         | Log entry ID        |
-| ACTION     | VARCHAR(50) | Operation performed |
-| STATUS     | VARCHAR(20) | SUCCESS/FAILURE     |
-| CREATED_AT | TIMESTAMP   | Timestamp           |
-
----
-
-## Core COBOL Programs
-
-### 1. Customer Manager (`custmgr.cbl`)
-
-* Create new customers
-* Retrieve customer details
+All programs use a shared copybook (`dbconfig.cpy`) for database configuration.
 
 ---
 
-### 2. Account Manager (`acctmgr.cbl`)
+## REST API Endpoints
 
-* Create accounts
-* Check balances
-* Update account status
+Run with: `uvicorn api.main:app --reload`
 
----
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/customers` | List all customers |
+| GET | `/customers/{id}` | Get customer by ID |
+| POST | `/customers` | Create customer |
+| GET | `/accounts/{id}` | Get account details |
+| GET | `/accounts/{id}/balance` | Check balance |
+| POST | `/transactions/deposit` | Process deposit (via stored procedure) |
+| POST | `/transactions/withdraw` | Process withdrawal (via stored procedure) |
+| POST | `/transactions/transfer` | Inter-account transfer (via stored procedure) |
+| GET | `/reports/account-summary` | Account summary (via database view) |
+| GET | `/reports/transactions/{id}` | Transaction history with optional date filters |
 
-### 3. Transaction Processor (`txnproc.cbl`)
-
-* Process deposits and withdrawals
-* Update balances
-* Record transactions
-* Handle transaction safety (commit/rollback)
-
----
-
-### 4. Report Generator (`rptgen.cbl`)
-
-* Generate account summaries
-* Produce transaction reports
-* Use cursors for multi-row processing
-
----
-
-## Key Features
-
-### Embedded SQL Integration
-
-* Direct SQL queries inside COBOL programs
-* Data retrieval and updates using `EXEC SQL`
-
-### Transaction Safety
-
-* Ensures consistency using:
-
-  * `COMMIT`
-  * `ROLLBACK`
-
-### Batch Processing
-
-* Process large transaction files
-* Simulate real-world banking batch jobs
-
-### Cursor-Based Data Handling
-
-* Efficiently iterate through large datasets
-
-### Modular Design
-
-* Separate COBOL programs for each domain
-
----
-
-## 🔄 Example Workflow
-
-### Deposit Transaction
-
-1. User inputs:
-
-```
-Account ID: 1001
-Amount: 500
-```
-
-2. System actions:
-
-* Validate account exists
-* Update balance
-* Insert transaction record
-* Commit transaction
-
-3. Output:
-
-```
-SUCCESS: New Balance = 5500.00
-```
+Interactive docs available at `http://localhost:8000/docs` when running.
 
 ---
 
@@ -194,23 +94,41 @@ SUCCESS: New Balance = 5500.00
 
 ```
 cobol-db-system/
-│
-├── src/
+├── api/                    Python REST API
+│   ├── Dockerfile
+│   ├── main.py             FastAPI application
+│   ├── db.py               Connection pool
+│   ├── models.py           Pydantic schemas
+│   └── requirements.txt
+├── config/                 Environment configuration
+│   ├── dev.env
+│   └── test.env
+├── data/                   Runtime input files
+│   └── batch_transactions.txt
+├── docs/                   Architecture documentation
+│   └── architecture.md
+├── reports/                Generated report output
+├── sql/                    Database DDL and DML
+│   ├── schema.sql          Table definitions
+│   ├── seed_data.sql       Sample data
+│   ├── procedures.sql      Stored procedures
+│   └── views.sql           Reporting views
+├── src/                    COBOL source programs
+│   ├── dbconfig.cpy        Shared DB configuration copybook
 │   ├── custmgr.cbl
 │   ├── acctmgr.cbl
 │   ├── txnproc.cbl
-│   └── rptgen.cbl
-│
-├── sql/
-│   ├── schema.sql
-│   └── seed_data.sql
-│
-├── data/
-│   └── batch_transactions.txt
-│
-├── docs/
-│   └── architecture.md
-│
+│   ├── xfermgr.cbl
+│   ├── rptgen.cbl
+│   └── intcalc.cbl
+├── tests/                  Test suite
+│   ├── setup-testdb.sql
+│   ├── teardown-testdb.sql
+│   ├── test-banking.cbl    21-case COBOL test suite
+│   ├── run-tests.ps1       PowerShell test runner
+│   └── run-tests.sh        Bash test runner
+├── docker-compose.yml
+├── Makefile
 └── README.md
 ```
 
@@ -220,102 +138,98 @@ cobol-db-system/
 
 ### Prerequisites
 
-* COBOL compiler (GnuCOBOL recommended)
-* Database:
+* GnuCOBOL compiler (`cobc`)
+* PostgreSQL (local) or Docker
+* Python 3.10+ (for REST API)
+* GNU Make (optional, for build automation)
 
-  * DB2 (enterprise option), or
-  * PostgreSQL (local development)
-* SQL precompiler (if required)
+### Option 1: Docker (Recommended)
+
+```
+docker-compose up
+```
+
+This starts PostgreSQL (with schema, seed data, procedures, and views auto-applied) and the FastAPI server on port 8000.
+
+### Option 2: Local Setup
+
+1. **Database:**
+```
+psql -U coboluser -d coboldb -f sql/schema.sql
+psql -U coboluser -d coboldb -f sql/seed_data.sql
+psql -U coboluser -d coboldb -f sql/procedures.sql
+psql -U coboluser -d coboldb -f sql/views.sql
+```
+
+2. **COBOL programs:**
+```
+make all
+```
+Or individually: `make bin/txnproc`
+
+3. **REST API:**
+```
+pip install -r api/requirements.txt
+uvicorn api.main:app --reload
+```
+
+4. **Run a program:**
+```
+bin/txnproc
+```
 
 ---
 
-### Setup Steps
+## Testing
 
-1. Clone the repository:
-
+### Automated test suite (21 tests):
 ```
-git clone https://github.com/yourusername/cobol-db-system.git
-cd cobol-db-system
-```
+# PowerShell
+.\tests\run-tests.ps1
 
-2. Set up the database:
+# Bash
+bash tests/run-tests.sh
 
-```
-psql -U user -d dbname -f sql/schema.sql
-psql -U user -d dbname -f sql/seed_data.sql
+# Via Makefile
+make test
 ```
 
-3. Compile COBOL programs:
-
-```
-cobc -x src/txnproc.cbl
-```
-
-4. Run the program:
-
-```
-./txnproc
-```
-
----
-
-## Batch Processing Example
-
-Input file (`batch_transactions.txt`):
-
-```
-1001,200,DEPOSIT
-1002,50,WITHDRAW
-```
-
-Run batch processor to:
-
-* Update balances
-* Insert transaction logs
-* Generate output report
+### Test coverage:
+* Deposits and withdrawals (success + balance verification)
+* Overdraft rejection with balance preservation
+* Closed and non-existent account rejection
+* Transaction and audit record verification
+* Compound operations (multiple deposits, deposit-then-withdraw)
+* Inter-account transfers (success, balances, insufficient funds, same-account, closed target)
+* DB constraint enforcement (zero-amount rejection)
+* Transfer record verification
 
 ---
 
 ## Concepts Demonstrated
 
-* Enterprise COBOL development
-* Relational database design
-* Embedded SQL usage
-* Transaction control and data integrity
-* Batch vs real-time processing
-* Financial system design patterns
+* Enterprise COBOL development with modular program structure
+* Embedded SQL (EXEC SQL) with host variables and SQLCA
+* Transaction safety (COMMIT/ROLLBACK)
+* Row-level locking (SELECT FOR UPDATE)
+* Cursor-based multi-row processing
+* COBOL copybooks for shared configuration
+* Batch processing (transactions and interest calculation)
+* Stored procedures (PL/pgSQL)
+* Database views for reporting
+* File I/O (report generation to flat files)
+* Legacy-modern integration (COBOL + Python REST API on shared DB)
+* Containerized deployment (Docker Compose)
+* Automated testing with deterministic test data
 
 ---
 
-## Advanced Enhancements
-
-* Add REST API layer (Python / FastAPI)
-* Implement stored procedures
-* Add concurrency testing
-* Build a web dashboard frontend
-* Introduce authentication/authorization
-* Scale to large datasets (100k+ records)
-
-
 ## License
 
-MIT License (or your preferred license)
+MIT License
 
 ---
 
 ## Author
 
-Your Name
 GitHub: https://github.com/NathanGr33n
-
----
-
-## Future Vision
-
-This project can evolve into a **modernized legacy system platform**, combining:
-
-* COBOL for core logic
-* Python for APIs
-* Cloud-based database infrastructure
-
-A powerful demonstration of bridging **old-world systems with modern engineering**.
