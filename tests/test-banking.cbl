@@ -27,6 +27,13 @@
       *>   T12  Audit log entry created on failure
       *>   T13  Multiple deposits accumulate correctly
       *>   T14  Deposit then withdraw leaves correct balance
+      *>   T15  Successful inter-account transfer
+      *>   T16  Transfer balances are correct after transfer
+      *>   T17  Reject transfer with insufficient funds
+      *>   T18  Reject same-account transfer
+      *>   T19  Reject transfer to closed account
+      *>   T20  Zero-amount deposit is rejected by DB constraint
+      *>   T21  Transfer records exist in TRANSACTIONS table
       *> ============================================================
 
        ENVIRONMENT DIVISION.
@@ -53,6 +60,12 @@
        01  HV-TXN-COUNT          PIC S9(9) COMP.
        01  HV-AUDIT-COUNT        PIC S9(9) COMP.
        01  HV-NEW-BALANCE        PIC S9(10)V99 COMP-3.
+       01  HV-SOURCE-ACCT-ID     PIC S9(9) COMP.
+       01  HV-TARGET-ACCT-ID     PIC S9(9) COMP.
+       01  HV-SOURCE-BALANCE     PIC S9(10)V99 COMP-3.
+       01  HV-TARGET-BALANCE     PIC S9(10)V99 COMP-3.
+       01  HV-SOURCE-STATUS      PIC X(20).
+       01  HV-TARGET-STATUS      PIC X(20).
            EXEC SQL END DECLARE SECTION END-EXEC.
 
       *> ----- Database Configuration -----
@@ -94,6 +107,16 @@
       *>   --- Compound Operations ---
            PERFORM T13-MULTIPLE-DEPOSITS
            PERFORM T14-DEPOSIT-THEN-WITHDRAW
+      *>   --- Transfer Tests ---
+           PERFORM T15-TRANSFER-SUCCESS
+           PERFORM T16-TRANSFER-BALANCES
+           PERFORM T17-TRANSFER-INSUFFICIENT
+           PERFORM T18-TRANSFER-SAME-ACCOUNT
+           PERFORM T19-TRANSFER-TO-CLOSED
+      *>   --- Boundary Tests ---
+           PERFORM T20-ZERO-AMOUNT-REJECTED
+      *>   --- Transfer Record Verification ---
+           PERFORM T21-TRANSFER-RECORDS-EXIST
 
            PERFORM 1200-PRINT-SUMMARY
            PERFORM 9000-DISCONNECT-DB
@@ -503,6 +526,238 @@
            MOVE HV-BALANCE TO WS-ACTUAL-BALANCE
            MOVE 400.00     TO WS-EXPECTED-BALANCE
            PERFORM 1300-ASSERT-BALANCE.
+
+      *> ============================================================
+      *> TRANSFER TESTS
+      *> ============================================================
+
+      *> T15: Transfer $200 from Account 1 ($1300) to Account 3
+      *>      After T14, Acct 3 = $400
+       T15-TRANSFER-SUCCESS.
+           MOVE "T15 " TO WS-TEST-ID
+           MOVE "Inter-account transfer succeeds"
+               TO WS-TEST-DESC
+
+           MOVE 1 TO HV-SOURCE-ACCT-ID
+           MOVE 3 TO HV-TARGET-ACCT-ID
+           MOVE 200.00 TO HV-AMOUNT
+           PERFORM 7300-DO-TRANSFER
+           PERFORM 1400-ASSERT-SQLCODE-ZERO.
+
+      *> T16: After T15: Acct 1 = 1300-200 = $1100, Acct 3 = 400+200 = $600
+       T16-TRANSFER-BALANCES.
+           MOVE "T16 " TO WS-TEST-ID
+           MOVE "Transfer balances correct after transfer"
+               TO WS-TEST-DESC
+
+           MOVE 1 TO HV-ACCOUNT-ID
+           PERFORM 7000-GET-BALANCE
+           MOVE HV-BALANCE TO WS-ACTUAL-BALANCE
+           MOVE 1100.00    TO WS-EXPECTED-BALANCE
+           PERFORM 1300-ASSERT-BALANCE
+
+           MOVE "T16b" TO WS-TEST-ID
+           MOVE "Target balance correct after transfer"
+               TO WS-TEST-DESC
+           MOVE 3 TO HV-ACCOUNT-ID
+           PERFORM 7000-GET-BALANCE
+           MOVE HV-BALANCE TO WS-ACTUAL-BALANCE
+           MOVE 600.00     TO WS-EXPECTED-BALANCE
+           PERFORM 1300-ASSERT-BALANCE.
+
+      *> T17: Transfer $99999 from Account 3 ($600) - insufficient
+       T17-TRANSFER-INSUFFICIENT.
+           MOVE "T17 " TO WS-TEST-ID
+           MOVE "Transfer rejected for insufficient funds"
+               TO WS-TEST-DESC
+
+           MOVE 3 TO HV-SOURCE-ACCT-ID
+           MOVE 1 TO HV-TARGET-ACCT-ID
+           MOVE 99999.00 TO HV-AMOUNT
+           PERFORM 7300-DO-TRANSFER
+           PERFORM 1500-ASSERT-SQLCODE-NONZERO.
+
+      *> T18: Transfer to same account
+       T18-TRANSFER-SAME-ACCOUNT.
+           MOVE "T18 " TO WS-TEST-ID
+           MOVE "Same-account transfer is rejected"
+               TO WS-TEST-DESC
+
+           MOVE 1 TO HV-SOURCE-ACCT-ID
+           MOVE 1 TO HV-TARGET-ACCT-ID
+           MOVE 100.00 TO HV-AMOUNT
+
+           ADD 1 TO WS-TOTAL-TESTS
+           IF HV-SOURCE-ACCT-ID = HV-TARGET-ACCT-ID
+               MOVE "PASS" TO WS-CURRENT-RESULT
+               ADD 1 TO WS-PASS-COUNT
+           ELSE
+               MOVE "FAIL" TO WS-CURRENT-RESULT
+               ADD 1 TO WS-FAIL-COUNT
+           END-IF
+           DISPLAY "[" WS-CURRENT-RESULT "] "
+                   WS-TEST-ID " - " WS-TEST-DESC.
+
+      *> T19: Transfer to closed Account 4
+       T19-TRANSFER-TO-CLOSED.
+           MOVE "T19 " TO WS-TEST-ID
+           MOVE "Transfer to closed account is rejected"
+               TO WS-TEST-DESC
+
+           MOVE 1 TO HV-SOURCE-ACCT-ID
+           MOVE 4 TO HV-TARGET-ACCT-ID
+           MOVE 100.00 TO HV-AMOUNT
+           PERFORM 7300-DO-TRANSFER
+           PERFORM 1500-ASSERT-SQLCODE-NONZERO.
+
+      *> T20: Zero-amount deposit rejected by DB CHECK constraint
+       T20-ZERO-AMOUNT-REJECTED.
+           MOVE "T20 " TO WS-TEST-ID
+           MOVE "Zero-amount transaction rejected by DB"
+               TO WS-TEST-DESC
+
+           MOVE 1    TO HV-ACCOUNT-ID
+           MOVE 0.00 TO HV-AMOUNT
+           MOVE "DEPOSIT" TO HV-TXN-TYPE
+           EXEC SQL
+               INSERT INTO TRANSACTIONS
+                   (ACCOUNT_ID, AMOUNT, TXN_TYPE)
+               VALUES
+                   (:HV-ACCOUNT-ID, :HV-AMOUNT, :HV-TXN-TYPE)
+           END-EXEC
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK END-EXEC
+           END-IF
+           PERFORM 1500-ASSERT-SQLCODE-NONZERO.
+
+      *> T21: Transfer records exist in TRANSACTIONS
+       T21-TRANSFER-RECORDS-EXIST.
+           MOVE "T21 " TO WS-TEST-ID
+           MOVE "TRANSFER records exist in TRANSACTIONS"
+               TO WS-TEST-DESC
+
+           EXEC SQL
+               SELECT COUNT(*)
+               INTO   :HV-TXN-COUNT
+               FROM   TRANSACTIONS
+               WHERE  TXN_TYPE = 'TRANSFER'
+           END-EXEC
+           PERFORM 1600-ASSERT-COUNT-POSITIVE.
+
+      *> ============================================================
+      *> SHARED: PERFORM TRANSFER
+      *> Sets SQLCODE to non-zero on failure.
+      *> ============================================================
+       7300-DO-TRANSFER.
+      *>   Validate source and target are different
+           IF HV-SOURCE-ACCT-ID = HV-TARGET-ACCT-ID
+               MOVE 99 TO SQLCODE
+               EXIT PARAGRAPH
+           END-IF
+
+      *>   Lock and validate source
+           EXEC SQL
+               SELECT BALANCE, STATUS
+               INTO   :HV-SOURCE-BALANCE, :HV-SOURCE-STATUS
+               FROM   ACCOUNTS
+               WHERE  ACCOUNT_ID = :HV-SOURCE-ACCT-ID
+               FOR UPDATE
+           END-EXEC
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK END-EXEC
+               EXIT PARAGRAPH
+           END-IF
+           IF HV-SOURCE-STATUS NOT = "ACTIVE"
+               EXEC SQL ROLLBACK END-EXEC
+               MOVE 99 TO SQLCODE
+               EXIT PARAGRAPH
+           END-IF
+
+      *>   Check sufficient funds
+           IF HV-SOURCE-BALANCE < HV-AMOUNT
+               STRING "TRANSFER - SRC " HV-SOURCE-ACCT-ID
+                      " TGT " HV-TARGET-ACCT-ID
+                   DELIMITED BY SIZE INTO HV-AUDIT-ACTION
+               MOVE "FAILURE" TO HV-AUDIT-STATUS
+               EXEC SQL ROLLBACK END-EXEC
+               PERFORM 8000-WRITE-AUDIT
+               MOVE 99 TO SQLCODE
+               EXIT PARAGRAPH
+           END-IF
+
+      *>   Lock and validate target
+           EXEC SQL
+               SELECT BALANCE, STATUS
+               INTO   :HV-TARGET-BALANCE, :HV-TARGET-STATUS
+               FROM   ACCOUNTS
+               WHERE  ACCOUNT_ID = :HV-TARGET-ACCT-ID
+               FOR UPDATE
+           END-EXEC
+
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK END-EXEC
+               EXIT PARAGRAPH
+           END-IF
+           IF HV-TARGET-STATUS NOT = "ACTIVE"
+               EXEC SQL ROLLBACK END-EXEC
+               MOVE 99 TO SQLCODE
+               EXIT PARAGRAPH
+           END-IF
+
+      *>   Debit source, credit target
+           EXEC SQL
+               UPDATE ACCOUNTS
+               SET    BALANCE = BALANCE - :HV-AMOUNT
+               WHERE  ACCOUNT_ID = :HV-SOURCE-ACCT-ID
+           END-EXEC
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK END-EXEC
+               EXIT PARAGRAPH
+           END-IF
+
+           EXEC SQL
+               UPDATE ACCOUNTS
+               SET    BALANCE = BALANCE + :HV-AMOUNT
+               WHERE  ACCOUNT_ID = :HV-TARGET-ACCT-ID
+           END-EXEC
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK END-EXEC
+               EXIT PARAGRAPH
+           END-IF
+
+      *>   Record transfer transactions
+           MOVE "TRANSFER" TO HV-TXN-TYPE
+           EXEC SQL
+               INSERT INTO TRANSACTIONS
+                   (ACCOUNT_ID, AMOUNT, TXN_TYPE)
+               VALUES
+                   (:HV-SOURCE-ACCT-ID, :HV-AMOUNT,
+                    :HV-TXN-TYPE)
+           END-EXEC
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK END-EXEC
+               EXIT PARAGRAPH
+           END-IF
+
+           EXEC SQL
+               INSERT INTO TRANSACTIONS
+                   (ACCOUNT_ID, AMOUNT, TXN_TYPE)
+               VALUES
+                   (:HV-TARGET-ACCT-ID, :HV-AMOUNT,
+                    :HV-TXN-TYPE)
+           END-EXEC
+           IF SQLCODE NOT = 0
+               EXEC SQL ROLLBACK END-EXEC
+               EXIT PARAGRAPH
+           END-IF
+
+           EXEC SQL COMMIT END-EXEC
+           STRING "TRANSFER - SRC " HV-SOURCE-ACCT-ID
+                  " TGT " HV-TARGET-ACCT-ID
+               DELIMITED BY SIZE INTO HV-AUDIT-ACTION
+           MOVE "SUCCESS" TO HV-AUDIT-STATUS
+           PERFORM 8000-WRITE-AUDIT.
 
       *> ============================================================
       *> DISCONNECT
