@@ -218,7 +218,7 @@
                    FUNCTION TRIM(WS-ACCOUNT-TYPE)
                DISPLAY '  Balance    : ' WS-DISPLAY-BALANCE
 
-               PERFORM 8000-LOG-AUDIT
+               PERFORM 8000-LOG-AUDIT-CREATE
            ELSE
                MOVE SQLCODE TO WS-SAVED-SQLCODE
                EXEC SQL ROLLBACK END-EXEC
@@ -361,7 +361,7 @@
                DISPLAY 'SUCCESS: Account status updated to '
                    FUNCTION TRIM(WS-ACCOUNT-STATUS)
 
-               PERFORM 8000-LOG-AUDIT
+               PERFORM 8100-LOG-AUDIT-STATUS
            ELSE
                MOVE SQLCODE TO WS-SAVED-SQLCODE
                EXEC SQL ROLLBACK END-EXEC
@@ -431,14 +431,38 @@
            .
 
       ******************************************************************
-      * Audit logging
+      * Audit logging - Account creation
       ******************************************************************
-       8000-LOG-AUDIT.
+       8000-LOG-AUDIT-CREATE.
            EXEC SQL
                INSERT INTO AUDIT_LOG (ACTION, STATUS, DETAILS)
-               VALUES ('ACCOUNT_UPDATE', 'SUCCESS',
-                       'Account operation on ID ' ||
-                       CAST(:WS-ACCOUNT-ID AS VARCHAR(8)))
+               VALUES ('ACCOUNT_CREATE', 'SUCCESS',
+                       'Created ' ||
+                       TRIM(:WS-ACCOUNT-TYPE) ||
+                       ' account ' ||
+                       CAST(:WS-ACCOUNT-ID AS VARCHAR(8)) ||
+                       ' for customer ' ||
+                       CAST(:WS-CUSTOMER-ID AS VARCHAR(8)))
+           END-EXEC
+
+           IF SQLCODE NOT = ZERO
+               DISPLAY 'WARNING: Audit log write failed.'
+           END-IF
+
+           EXEC SQL COMMIT END-EXEC
+           .
+
+      ******************************************************************
+      * Audit logging - Status update
+      ******************************************************************
+       8100-LOG-AUDIT-STATUS.
+           EXEC SQL
+               INSERT INTO AUDIT_LOG (ACTION, STATUS, DETAILS)
+               VALUES ('ACCOUNT_STATUS_UPDATE', 'SUCCESS',
+                       'Account ' ||
+                       CAST(:WS-ACCOUNT-ID AS VARCHAR(8)) ||
+                       ' status changed to ' ||
+                       TRIM(:WS-ACCOUNT-STATUS))
            END-EXEC
 
            IF SQLCODE NOT = ZERO
