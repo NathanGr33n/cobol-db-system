@@ -103,35 +103,48 @@ Tracks system activity.
 
 ## Core COBOL Programs
 
+### 0. Main Menu (`mainmenu.cbl`)
+
+* Central entry point for the system
+* Dispatches to all program modules
+
+---
+
 ### 1. Customer Manager (`custmgr.cbl`)
 
-* Create new customers
+* Create new customers (with phone number)
 * Retrieve customer details
+* List and search customers
+* Update customer fields (blank=keep supported)
+* Delete customers (with FK safety check)
 
 ---
 
 ### 2. Account Manager (`acctmgr.cbl`)
 
-* Create accounts
+* Create accounts (validates customer exists)
 * Check balances
-* Update account status
+* Update account status (ACTIVE/CLOSED)
+* View full account details with customer info
 
 ---
 
 ### 3. Transaction Processor (`txnproc.cbl`)
 
 * Process deposits and withdrawals
-* Update balances
-* Record transactions
-* Handle transaction safety (commit/rollback)
+* Transfer between accounts (TRANSFER type with linked records)
+* Batch processing from CSV files
+* Full transaction safety (COMMIT/ROLLBACK)
 
 ---
 
 ### 4. Report Generator (`rptgen.cbl`)
 
-* Generate account summaries
-* Produce transaction reports
-* Use cursors for multi-row processing
+* Account summary by customer
+* Transaction history (with date range filter)
+* Full account report across all customers
+* Transaction summary (aggregate stats)
+* Audit log report
 
 ---
 
@@ -196,21 +209,41 @@ SUCCESS: New Balance = 5500.00
 cobol-db-system/
 │
 ├── src/
-│   ├── custmgr.cbl
-│   ├── acctmgr.cbl
-│   ├── txnproc.cbl
-│   └── rptgen.cbl
+│   ├── mainmenu.cbl          # Main menu dispatcher
+│   ├── custmgr.cbl            # Customer management
+│   ├── acctmgr.cbl            # Account management
+│   ├── txnproc.cbl            # Transaction processing
+│   └── rptgen.cbl             # Report generation
+│
+├── cpy/
+│   ├── dbconfig.cpy           # Database connection config
+│   ├── wscommon.cpy           # Shared working-storage items
+│   ├── auditlog.cpy           # Audit log host variables
+│   ├── sqlerror.cpy           # SQL error display variables
+│   └── sqlerror-para.cpy      # SQL error display paragraph
 │
 ├── sql/
-│   ├── schema.sql
-│   └── seed_data.sql
+│   ├── schema.sql             # Base database schema
+│   ├── seed_data.sql          # Sample data
+│   └── migrations/
+│       └── 001_db_improvements.sql  # PHONE, TRANSFER, stored procs
 │
 ├── data/
-│   └── batch_transactions.txt
+│   ├── batch_transactions.txt # Valid batch file
+│   └── batch_invalid.txt      # Invalid batch file (for testing)
+│
+├── tests/
+│   └── test_schema.sql        # Schema + migration validation tests
+│
+├── scripts/
+│   ├── setup.sh               # Linux/macOS setup script
+│   └── setup.ps1              # Windows PowerShell setup script
 │
 ├── docs/
-│   └── architecture.md
+│   └── architecture.md        # System architecture documentation
 │
+├── Makefile                   # Build and database targets
+├── .gitignore
 └── README.md
 ```
 
@@ -243,18 +276,33 @@ cd cobol-db-system
 ```
 psql -U user -d dbname -f sql/schema.sql
 psql -U user -d dbname -f sql/seed_data.sql
+psql -U user -d dbname -f sql/migrations/001_db_improvements.sql
+```
+
+Or use the setup script:
+
+```
+# Linux/macOS
+./scripts/setup.sh
+
+# Windows PowerShell
+.\scripts\setup.ps1
 ```
 
 3. Compile COBOL programs:
 
 ```
-cobc -x src/txnproc.cbl
+make build
 ```
 
-4. Run the program:
+4. Run the system:
 
 ```
-./txnproc
+./bin/mainmenu    # Main entry point
+./bin/custmgr     # Customer Manager (standalone)
+./bin/acctmgr     # Account Manager (standalone)
+./bin/txnproc     # Transaction Processor (standalone)
+./bin/rptgen      # Report Generator (standalone)
 ```
 
 ---
@@ -305,7 +353,6 @@ MIT License (or your preferred license)
 
 ## Author
 
-Your Name
 GitHub: https://github.com/NathanGr33n
 
 ---
