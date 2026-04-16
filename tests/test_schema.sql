@@ -189,6 +189,98 @@ BEGIN
     END IF;
 END $$;
 
+-- ----------------------------------------------------------
+-- Test 11: Migration - PHONE column exists on CUSTOMERS
+-- ----------------------------------------------------------
+\echo ''
+\echo 'Test 11: Migration - PHONE column exists on CUSTOMERS'
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'customers'
+                 AND column_name = 'phone'
+                 AND table_schema = 'public') THEN
+        RAISE NOTICE '  PASS: PHONE column exists on CUSTOMERS';
+    ELSE
+        RAISE NOTICE '  FAIL: PHONE column not found on CUSTOMERS';
+    END IF;
+END $$;
+
+-- ----------------------------------------------------------
+-- Test 12: Migration - TRANSFER TXN_TYPE is accepted
+-- ----------------------------------------------------------
+\echo ''
+\echo 'Test 12: Migration - TRANSFER TXN_TYPE is accepted'
+DO $$
+DECLARE
+    v_txn_id INT;
+BEGIN
+    INSERT INTO TRANSACTIONS (ACCOUNT_ID, AMOUNT, TXN_TYPE)
+    VALUES (2001, 1.00, 'TRANSFER')
+    RETURNING TXN_ID INTO v_txn_id;
+
+    DELETE FROM TRANSACTIONS WHERE TXN_ID = v_txn_id;
+
+    RAISE NOTICE '  PASS: TRANSFER TXN_TYPE accepted';
+EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE '  FAIL: TRANSFER TXN_TYPE rejected';
+END $$;
+
+-- ----------------------------------------------------------
+-- Test 13: Migration - RELATED_TXN_ID column exists
+-- ----------------------------------------------------------
+\echo ''
+\echo 'Test 13: Migration - RELATED_TXN_ID column exists on TRANSACTIONS'
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'transactions'
+                 AND column_name = 'related_txn_id'
+                 AND table_schema = 'public') THEN
+        RAISE NOTICE '  PASS: RELATED_TXN_ID column exists';
+    ELSE
+        RAISE NOTICE '  FAIL: RELATED_TXN_ID column not found';
+    END IF;
+END $$;
+
+-- ----------------------------------------------------------
+-- Test 14: Migration - CREATED_AT column exists on ACCOUNTS
+-- ----------------------------------------------------------
+\echo ''
+\echo 'Test 14: Migration - CREATED_AT column exists on ACCOUNTS'
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'accounts'
+                 AND column_name = 'created_at'
+                 AND table_schema = 'public') THEN
+        RAISE NOTICE '  PASS: CREATED_AT column exists on ACCOUNTS';
+    ELSE
+        RAISE NOTICE '  FAIL: CREATED_AT column not found on ACCOUNTS';
+    END IF;
+END $$;
+
+-- ----------------------------------------------------------
+-- Test 15: Migration - Stored procedures exist
+-- ----------------------------------------------------------
+\echo ''
+\echo 'Test 15: Migration - Stored procedures exist'
+DO $$
+DECLARE
+    fn TEXT;
+    fns TEXT[] := ARRAY['fn_deposit', 'fn_withdraw', 'fn_transfer'];
+BEGIN
+    FOREACH fn IN ARRAY fns LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.routines
+                   WHERE routine_name = fn
+                     AND routine_schema = 'public') THEN
+            RAISE NOTICE '  PASS: Function % exists', fn;
+        ELSE
+            RAISE NOTICE '  FAIL: Function % not found', fn;
+        END IF;
+    END LOOP;
+END $$;
+
 \echo ''
 \echo '============================================'
 \echo '  TESTS COMPLETE'
