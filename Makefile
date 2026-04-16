@@ -9,7 +9,7 @@ CPY_DIR    = cpy
 BIN_DIR    = bin
 SQL_DIR    = sql
 
-PROGRAMS   = custmgr acctmgr txnproc rptgen
+PROGRAMS   = custmgr acctmgr txnproc rptgen mainmenu
 SOURCES    = $(addprefix $(SRC_DIR)/, $(addsuffix .cbl, $(PROGRAMS)))
 COBFILES   = $(addprefix $(SRC_DIR)/, $(addsuffix .cob, $(PROGRAMS)))
 BINARIES   = $(addprefix $(BIN_DIR)/, $(PROGRAMS))
@@ -59,6 +59,7 @@ db-setup:
 	createdb $(DB_NAME) 2>/dev/null || true
 	$(PSQL) -d $(DB_NAME) -f $(SQL_DIR)/schema.sql
 	$(PSQL) -d $(DB_NAME) -f $(SQL_DIR)/seed_data.sql
+	$(PSQL) -d $(DB_NAME) -f $(SQL_DIR)/migrations/001_db_improvements.sql
 
 db-seed:
 	$(PSQL) -d $(DB_NAME) -f $(SQL_DIR)/seed_data.sql

@@ -67,6 +67,9 @@ psql -d $DB_NAME -f sql/schema.sql -q
 Write-Host "Loading seed data..."
 psql -d $DB_NAME -f sql/seed_data.sql -q
 
+Write-Host "Applying migrations..."
+psql -d $DB_NAME -f sql/migrations/001_db_improvements.sql -q
+
 Write-Host ""
 
 # Build
@@ -75,7 +78,7 @@ if (-not (Test-Path "bin")) {
     New-Item -ItemType Directory -Path "bin" | Out-Null
 }
 
-$programs = @("custmgr", "acctmgr", "txnproc", "rptgen")
+$programs = @("custmgr", "acctmgr", "txnproc", "rptgen", "mainmenu")
 foreach ($prog in $programs) {
     Write-Host "  Preprocessing src\${prog}.cbl..."
     ocesql "src\${prog}.cbl" "src\${prog}.cob"
@@ -87,6 +90,7 @@ Write-Host ""
 Write-Host "Setup complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Run programs with:"
+Write-Host "  .\bin\mainmenu.exe   # Main Menu (entry point)"
 Write-Host "  .\bin\custmgr.exe    # Customer Manager"
 Write-Host "  .\bin\acctmgr.exe    # Account Manager"
 Write-Host "  .\bin\txnproc.exe    # Transaction Processor"

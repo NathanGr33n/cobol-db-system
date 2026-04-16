@@ -70,13 +70,16 @@ psql -d "$DB_NAME" -f sql/schema.sql -q
 echo "Loading seed data..."
 psql -d "$DB_NAME" -f sql/seed_data.sql -q
 
+echo "Applying migrations..."
+psql -d "$DB_NAME" -f sql/migrations/001_db_improvements.sql -q
+
 echo ""
 
 # Build
 echo "Building COBOL programs..."
 mkdir -p bin
 
-for prog in custmgr acctmgr txnproc rptgen; do
+for prog in custmgr acctmgr txnproc rptgen mainmenu; do
     echo "  Preprocessing src/${prog}.cbl..."
     ocesql "src/${prog}.cbl" "src/${prog}.cob"
     echo "  Compiling src/${prog}.cob..."
@@ -87,6 +90,7 @@ echo ""
 echo -e "${GREEN}Setup complete!${NC}"
 echo ""
 echo "Run programs with:"
+echo "  ./bin/mainmenu   # Main Menu (entry point)"
 echo "  ./bin/custmgr    # Customer Manager"
 echo "  ./bin/acctmgr    # Account Manager"
 echo "  ./bin/txnproc    # Transaction Processor"
