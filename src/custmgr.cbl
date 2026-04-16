@@ -30,6 +30,7 @@
        01  WS-FIRST-NAME           PIC X(50)    VALUE SPACES.
        01  WS-LAST-NAME            PIC X(50)    VALUE SPACES.
        01  WS-EMAIL                PIC X(100)   VALUE SPACES.
+       01  WS-PHONE                PIC X(20)    VALUE SPACES.
        01  WS-CREATED-AT           PIC X(10)    VALUE SPACES.
 
       ******************************************************************
@@ -50,6 +51,14 @@
        01  WS-ACCOUNT-COUNT        PIC 9(4)     VALUE ZEROS.
        01  WS-SEARCH-TERM          PIC X(50)    VALUE SPACES.
        01  WS-SEARCH-PATTERN       PIC X(54)    VALUE SPACES.
+
+      ******************************************************************
+      * Temporary Variables for Update (blank=keep)
+      ******************************************************************
+       01  WS-TEMP-FIRST-NAME      PIC X(50)    VALUE SPACES.
+       01  WS-TEMP-LAST-NAME       PIC X(50)    VALUE SPACES.
+       01  WS-TEMP-EMAIL           PIC X(100)   VALUE SPACES.
+       01  WS-TEMP-PHONE           PIC X(20)    VALUE SPACES.
 
       ******************************************************************
       * Database Configuration
@@ -185,11 +194,16 @@
                GO TO 3000-EXIT
            END-IF
 
+           DISPLAY 'Enter Phone (max 20, blank=skip): '
+               WITH NO ADVANCING
+           ACCEPT WS-PHONE
+
            EXEC SQL
                INSERT INTO CUSTOMERS
-                   (FIRST_NAME, LAST_NAME, EMAIL)
+                   (FIRST_NAME, LAST_NAME, EMAIL, PHONE)
                VALUES
-                   (:WS-FIRST-NAME, :WS-LAST-NAME, :WS-EMAIL)
+                   (:WS-FIRST-NAME, :WS-LAST-NAME,
+                    :WS-EMAIL, :WS-PHONE)
            END-EXEC
 
            IF SQLCODE = ZERO
@@ -239,9 +253,10 @@
 
            EXEC SQL
                SELECT CUSTOMER_ID, FIRST_NAME, LAST_NAME,
-                      EMAIL, CREATED_AT
+                      EMAIL, PHONE, CREATED_AT
                INTO :WS-CUSTOMER-ID, :WS-FIRST-NAME,
-                    :WS-LAST-NAME, :WS-EMAIL, :WS-CREATED-AT
+                    :WS-LAST-NAME, :WS-EMAIL, :WS-PHONE,
+                    :WS-CREATED-AT
                FROM CUSTOMERS
                WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
            END-EXEC
@@ -256,6 +271,8 @@
                    FUNCTION TRIM(WS-LAST-NAME)
                DISPLAY '  Email       : '
                    FUNCTION TRIM(WS-EMAIL)
+               DISPLAY '  Phone       : '
+                   FUNCTION TRIM(WS-PHONE)
                DISPLAY '  Created At  : '
                    FUNCTION TRIM(WS-CREATED-AT)
            ELSE
@@ -282,7 +299,7 @@
            EXEC SQL
                DECLARE CSR-CUSTOMERS CURSOR FOR
                SELECT CUSTOMER_ID, FIRST_NAME, LAST_NAME,
-                      EMAIL, CREATED_AT
+                      EMAIL, PHONE, CREATED_AT
                FROM CUSTOMERS
                ORDER BY CUSTOMER_ID
            END-EXEC
@@ -319,7 +336,8 @@
            EXEC SQL
                FETCH CSR-CUSTOMERS
                INTO :WS-CUSTOMER-ID, :WS-FIRST-NAME,
-                    :WS-LAST-NAME, :WS-EMAIL, :WS-CREATED-AT
+                    :WS-LAST-NAME, :WS-EMAIL, :WS-PHONE,
+                    :WS-CREATED-AT
            END-EXEC
 
            IF SQLCODE = ZERO
@@ -331,6 +349,8 @@
                    FUNCTION TRIM(WS-LAST-NAME)
                    '  Email: '
                    FUNCTION TRIM(WS-EMAIL)
+                   '  Phone: '
+                   FUNCTION TRIM(WS-PHONE)
            ELSE
                SET WS-EOF TO TRUE
                IF SQLCODE NOT = 100
@@ -356,8 +376,9 @@
 
       *    Fetch current data
            EXEC SQL
-               SELECT FIRST_NAME, LAST_NAME, EMAIL
-               INTO :WS-FIRST-NAME, :WS-LAST-NAME, :WS-EMAIL
+               SELECT FIRST_NAME, LAST_NAME, EMAIL, PHONE
+               INTO :WS-FIRST-NAME, :WS-LAST-NAME,
+                    :WS-EMAIL, :WS-PHONE
                FROM CUSTOMERS
                WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
            END-EXEC
@@ -374,25 +395,50 @@
                FUNCTION TRIM(WS-LAST-NAME)
            DISPLAY '  Current Email     : '
                FUNCTION TRIM(WS-EMAIL)
+           DISPLAY '  Current Phone     : '
+               FUNCTION TRIM(WS-PHONE)
            DISPLAY SPACES
+
+      *    Save current values for blank=keep logic
+           MOVE WS-FIRST-NAME TO WS-TEMP-FIRST-NAME
+           MOVE WS-LAST-NAME  TO WS-TEMP-LAST-NAME
+           MOVE WS-EMAIL      TO WS-TEMP-EMAIL
+           MOVE WS-PHONE      TO WS-TEMP-PHONE
 
            DISPLAY 'New First Name (blank=keep): '
                WITH NO ADVANCING
            ACCEPT WS-FIRST-NAME
+           IF FUNCTION TRIM(WS-FIRST-NAME) = SPACES
+               MOVE WS-TEMP-FIRST-NAME TO WS-FIRST-NAME
+           END-IF
 
            DISPLAY 'New Last Name (blank=keep): '
                WITH NO ADVANCING
            ACCEPT WS-LAST-NAME
+           IF FUNCTION TRIM(WS-LAST-NAME) = SPACES
+               MOVE WS-TEMP-LAST-NAME TO WS-LAST-NAME
+           END-IF
 
            DISPLAY 'New Email (blank=keep): '
                WITH NO ADVANCING
            ACCEPT WS-EMAIL
+           IF FUNCTION TRIM(WS-EMAIL) = SPACES
+               MOVE WS-TEMP-EMAIL TO WS-EMAIL
+           END-IF
+
+           DISPLAY 'New Phone (blank=keep): '
+               WITH NO ADVANCING
+           ACCEPT WS-PHONE
+           IF FUNCTION TRIM(WS-PHONE) = SPACES
+               MOVE WS-TEMP-PHONE TO WS-PHONE
+           END-IF
 
            EXEC SQL
                UPDATE CUSTOMERS
                SET FIRST_NAME = :WS-FIRST-NAME,
                    LAST_NAME  = :WS-LAST-NAME,
-                   EMAIL      = :WS-EMAIL
+                   EMAIL      = :WS-EMAIL,
+                   PHONE      = :WS-PHONE
                WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
            END-EXEC
 
@@ -511,11 +557,12 @@
            EXEC SQL
                DECLARE CSR-SEARCH CURSOR FOR
                SELECT CUSTOMER_ID, FIRST_NAME, LAST_NAME,
-                      EMAIL
+                      EMAIL, PHONE
                FROM CUSTOMERS
                WHERE UPPER(FIRST_NAME) LIKE UPPER(:WS-SEARCH-PATTERN)
                   OR UPPER(LAST_NAME)  LIKE UPPER(:WS-SEARCH-PATTERN)
                   OR UPPER(EMAIL)      LIKE UPPER(:WS-SEARCH-PATTERN)
+                  OR UPPER(PHONE)      LIKE UPPER(:WS-SEARCH-PATTERN)
                ORDER BY CUSTOMER_ID
            END-EXEC
 
@@ -545,7 +592,7 @@
            EXEC SQL
                FETCH CSR-SEARCH
                INTO :WS-CUSTOMER-ID, :WS-FIRST-NAME,
-                    :WS-LAST-NAME, :WS-EMAIL
+                    :WS-LAST-NAME, :WS-EMAIL, :WS-PHONE
            END-EXEC
 
            IF SQLCODE = ZERO
@@ -557,6 +604,8 @@
                    FUNCTION TRIM(WS-LAST-NAME)
                    '  Email: '
                    FUNCTION TRIM(WS-EMAIL)
+                   '  Phone: '
+                   FUNCTION TRIM(WS-PHONE)
            ELSE
                SET WS-EOF TO TRUE
                IF SQLCODE NOT = 100
