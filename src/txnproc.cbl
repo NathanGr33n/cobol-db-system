@@ -55,6 +55,8 @@
        01  WS-TO-BALANCE            PIC S9(10)V99  VALUE ZEROS.
        01  WS-FROM-STATUS           PIC X(20)      VALUE SPACES.
        01  WS-TO-STATUS             PIC X(20)      VALUE SPACES.
+       01  WS-DEBIT-TXN-ID          PIC 9(8)       VALUE ZEROS.
+       01  WS-CREDIT-TXN-ID         PIC 9(8)       VALUE ZEROS.
 
       ******************************************************************
       * Batch Processing Variables
@@ -296,18 +298,50 @@
                GO TO 3500-EXIT
            END-IF
 
-      *    Record both sides as WITHDRAW/DEPOSIT
+      *    Record debit side as TRANSFER
            EXEC SQL
                INSERT INTO TRANSACTIONS
                    (ACCOUNT_ID, AMOUNT, TXN_TYPE)
                VALUES
-                   (:WS-FROM-ACCOUNT-ID, :WS-AMOUNT, 'WITHDRAW')
+                   (:WS-FROM-ACCOUNT-ID, :WS-AMOUNT, 'TRANSFER')
            END-EXEC
+           IF SQLCODE NOT = ZERO
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'ERROR: Debit transaction record failed.'
+               GO TO 3500-EXIT
+           END-IF
+
+      *    Get the debit TXN_ID for linking
+           EXEC SQL
+               SELECT CURRVAL('transactions_txn_id_seq')
+               INTO :WS-DEBIT-TXN-ID
+           END-EXEC
+
+      *    Record credit side as TRANSFER with link
            EXEC SQL
                INSERT INTO TRANSACTIONS
-                   (ACCOUNT_ID, AMOUNT, TXN_TYPE)
+                   (ACCOUNT_ID, AMOUNT, TXN_TYPE,
+                    RELATED_TXN_ID)
                VALUES
-                   (:WS-TO-ACCOUNT-ID, :WS-AMOUNT, 'DEPOSIT')
+                   (:WS-TO-ACCOUNT-ID, :WS-AMOUNT, 'TRANSFER',
+                    :WS-DEBIT-TXN-ID)
+           END-EXEC
+           IF SQLCODE NOT = ZERO
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'ERROR: Credit transaction record failed.'
+               GO TO 3500-EXIT
+           END-IF
+
+      *    Get the credit TXN_ID and link back to debit
+           EXEC SQL
+               SELECT CURRVAL('transactions_txn_id_seq')
+               INTO :WS-CREDIT-TXN-ID
+           END-EXEC
+
+           EXEC SQL
+               UPDATE TRANSACTIONS
+               SET RELATED_TXN_ID = :WS-CREDIT-TXN-ID
+               WHERE TXN_ID = :WS-DEBIT-TXN-ID
            END-EXEC
 
       *    Commit the atomic transfer
