@@ -12,11 +12,13 @@ CREATE TABLE IF NOT EXISTS CUSTOMERS (
     CUSTOMER_ID  SERIAL       PRIMARY KEY,
     FIRST_NAME   VARCHAR(50)  NOT NULL,
     LAST_NAME    VARCHAR(50)  NOT NULL,
-    EMAIL        VARCHAR(100) NOT NULL UNIQUE,
+    EMAIL        VARCHAR(100) NOT NULL
+                               CHECK (EMAIL ~* '^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$'),
     CREATED_AT   DATE         NOT NULL DEFAULT CURRENT_DATE
 );
 
-CREATE INDEX IF NOT EXISTS idx_customers_email ON CUSTOMERS (EMAIL);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_email_ci
+    ON CUSTOMERS ((LOWER(EMAIL)));
 CREATE INDEX IF NOT EXISTS idx_customers_name  ON CUSTOMERS (LAST_NAME, FIRST_NAME);
 
 -- ----------------------------------------------------------
