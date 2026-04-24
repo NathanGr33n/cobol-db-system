@@ -126,10 +126,38 @@ EXCEPTION WHEN unique_violation THEN
 END $$;
 
 -- ----------------------------------------------------------
--- Test 9: Audit trigger fires on balance update
+-- Test 9: UNIQUE constraint - case-insensitive duplicate email
 -- ----------------------------------------------------------
 \echo ''
-\echo 'Test 9: Audit trigger fires on balance update'
+\echo 'Test 9: UNIQUE constraint - case-insensitive duplicate email'
+DO $$
+BEGIN
+    INSERT INTO CUSTOMERS (FIRST_NAME, LAST_NAME, EMAIL)
+    VALUES ('Case', 'Duplicate', 'JOHN.SMITH@EMAIL.COM');
+    RAISE NOTICE '  FAIL: Case-insensitive duplicate email was accepted';
+EXCEPTION WHEN unique_violation THEN
+    RAISE NOTICE '  PASS: Case-insensitive duplicate email rejected';
+END $$;
+
+-- ----------------------------------------------------------
+-- Test 10: CHECK constraint - invalid email format rejected
+-- ----------------------------------------------------------
+\echo ''
+\echo 'Test 10: CHECK constraint - invalid email format rejected'
+DO $$
+BEGIN
+    INSERT INTO CUSTOMERS (FIRST_NAME, LAST_NAME, EMAIL)
+    VALUES ('Invalid', 'Email', 'not-an-email');
+    RAISE NOTICE '  FAIL: Invalid email format was accepted';
+EXCEPTION WHEN check_violation THEN
+    RAISE NOTICE '  PASS: Invalid email format correctly rejected';
+END $$;
+
+-- ----------------------------------------------------------
+-- Test 11: Audit trigger fires on balance update
+-- ----------------------------------------------------------
+\echo ''
+\echo 'Test 11: Audit trigger fires on balance update'
 DO $$
 DECLARE
     v_count_before INT;
@@ -156,10 +184,10 @@ BEGIN
 END $$;
 
 -- ----------------------------------------------------------
--- Test 10: Seed data integrity
+-- Test 12: Seed data integrity
 -- ----------------------------------------------------------
 \echo ''
-\echo 'Test 10: Seed data integrity'
+\echo 'Test 12: Seed data integrity'
 DO $$
 DECLARE
     v_cust INT;
