@@ -32,6 +32,9 @@
        01  WS-EMAIL                PIC X(100)   VALUE SPACES.
        01  WS-PHONE                PIC X(20)    VALUE SPACES.
        01  WS-CREATED-AT           PIC X(10)    VALUE SPACES.
+       01  WS-CURRENT-FIRST-NAME   PIC X(50)    VALUE SPACES.
+       01  WS-CURRENT-LAST-NAME    PIC X(50)    VALUE SPACES.
+       01  WS-CURRENT-EMAIL        PIC X(100)   VALUE SPACES.
 
       ******************************************************************
       * Program Control Variables
@@ -377,8 +380,8 @@
       *    Fetch current data
            EXEC SQL
                SELECT FIRST_NAME, LAST_NAME, EMAIL, PHONE
-               INTO :WS-FIRST-NAME, :WS-LAST-NAME,
-                    :WS-EMAIL, :WS-PHONE
+               INTO :WS-CURRENT-FIRST-NAME, :WS-CURRENT-LAST-NAME,
+                    :WS-CURRENT-EMAIL, :WS-PHONE
                FROM CUSTOMERS
                WHERE CUSTOMER_ID = :WS-CUSTOMER-ID
            END-EXEC
@@ -388,13 +391,17 @@
                    WS-CUSTOMER-ID
                GO TO 6000-EXIT
            END-IF
+           IF SQLCODE NOT = ZERO
+               DISPLAY 'ERROR: Database error. SQLCODE: ' SQLCODE
+               GO TO 6000-EXIT
+           END-IF
 
            DISPLAY '  Current First Name: '
-               FUNCTION TRIM(WS-FIRST-NAME)
+               FUNCTION TRIM(WS-CURRENT-FIRST-NAME)
            DISPLAY '  Current Last Name : '
-               FUNCTION TRIM(WS-LAST-NAME)
+               FUNCTION TRIM(WS-CURRENT-LAST-NAME)
            DISPLAY '  Current Email     : '
-               FUNCTION TRIM(WS-EMAIL)
+               FUNCTION TRIM(WS-CURRENT-EMAIL)
            DISPLAY '  Current Phone     : '
                FUNCTION TRIM(WS-PHONE)
            DISPLAY SPACES
@@ -431,6 +438,34 @@
            ACCEPT WS-PHONE
            IF FUNCTION TRIM(WS-PHONE) = SPACES
                MOVE WS-TEMP-PHONE TO WS-PHONE
+           END-IF
+
+           IF FUNCTION LENGTH(FUNCTION TRIM(WS-FIRST-NAME))
+               = ZERO
+               MOVE WS-CURRENT-FIRST-NAME TO WS-FIRST-NAME
+           ELSE
+               MOVE FUNCTION TRIM(WS-FIRST-NAME) TO WS-FIRST-NAME
+           END-IF
+
+           IF FUNCTION LENGTH(FUNCTION TRIM(WS-LAST-NAME))
+               = ZERO
+               MOVE WS-CURRENT-LAST-NAME TO WS-LAST-NAME
+           ELSE
+               MOVE FUNCTION TRIM(WS-LAST-NAME) TO WS-LAST-NAME
+           END-IF
+
+           IF FUNCTION LENGTH(FUNCTION TRIM(WS-EMAIL))
+               = ZERO
+               MOVE WS-CURRENT-EMAIL TO WS-EMAIL
+           ELSE
+               MOVE FUNCTION TRIM(WS-EMAIL) TO WS-EMAIL
+               MOVE ZERO TO WS-AT-COUNT
+               INSPECT WS-EMAIL TALLYING WS-AT-COUNT
+                   FOR ALL '@'
+               IF WS-AT-COUNT NOT = 1
+                   DISPLAY 'ERROR: Invalid email format.'
+                   GO TO 6000-EXIT
+               END-IF
            END-IF
 
            EXEC SQL
