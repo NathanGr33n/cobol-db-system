@@ -281,6 +281,7 @@
            IF SQLCODE NOT = ZERO
                EXEC SQL ROLLBACK END-EXEC
                DISPLAY 'ERROR: Debit failed.'
+               PERFORM 5500-LOG-TRANSFER-FAILURE
                GO TO 3500-EXIT
            END-IF
 
@@ -295,6 +296,7 @@
            IF SQLCODE NOT = ZERO
                EXEC SQL ROLLBACK END-EXEC
                DISPLAY 'ERROR: Credit failed.'
+               PERFORM 5500-LOG-TRANSFER-FAILURE
                GO TO 3500-EXIT
            END-IF
 
@@ -307,7 +309,8 @@
            END-EXEC
            IF SQLCODE NOT = ZERO
                EXEC SQL ROLLBACK END-EXEC
-               DISPLAY 'ERROR: Debit transaction record failed.'
+               DISPLAY 'ERROR: Failed to log transfer debit entry.'
+               PERFORM 5500-LOG-TRANSFER-FAILURE
                GO TO 3500-EXIT
            END-IF
 
@@ -343,6 +346,12 @@
                SET RELATED_TXN_ID = :WS-CREDIT-TXN-ID
                WHERE TXN_ID = :WS-DEBIT-TXN-ID
            END-EXEC
+           IF SQLCODE NOT = ZERO
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'ERROR: Failed to log transfer credit entry.'
+               PERFORM 5500-LOG-TRANSFER-FAILURE
+               GO TO 3500-EXIT
+           END-IF
 
       *    Commit the atomic transfer
            EXEC SQL COMMIT END-EXEC
@@ -374,10 +383,16 @@
                        || ' to ' ||
                        CAST(:WS-TO-ACCOUNT-ID AS VARCHAR(8)))
                END-EXEC
-               EXEC SQL COMMIT END-EXEC
+               IF SQLCODE = ZERO
+                   EXEC SQL COMMIT END-EXEC
+               ELSE
+                   EXEC SQL ROLLBACK END-EXEC
+                   DISPLAY 'WARNING: Transfer success audit log failed.'
+               END-IF
            ELSE
                EXEC SQL ROLLBACK END-EXEC
                DISPLAY 'ERROR: Transfer commit failed.'
+               PERFORM 5500-LOG-TRANSFER-FAILURE
            END-IF
            .
        3500-EXIT.
@@ -515,6 +530,26 @@
                        CAST(:WS-ACCOUNT-ID AS VARCHAR(8)))
            END-EXEC
            EXEC SQL COMMIT END-EXEC
+           .
+
+      ******************************************************************
+      * Log transfer-specific failure to audit
+      ******************************************************************
+       5500-LOG-TRANSFER-FAILURE.
+           EXEC SQL
+               INSERT INTO AUDIT_LOG (ACTION, STATUS, DETAILS)
+               VALUES ('TRANSFER', 'FAILURE',
+                       'Failed transfer from ' ||
+                       CAST(:WS-FROM-ACCOUNT-ID AS VARCHAR(8)) ||
+                       ' to ' ||
+                       CAST(:WS-TO-ACCOUNT-ID AS VARCHAR(8)))
+           END-EXEC
+           IF SQLCODE = ZERO
+               EXEC SQL COMMIT END-EXEC
+           ELSE
+               EXEC SQL ROLLBACK END-EXEC
+               DISPLAY 'WARNING: Transfer failure audit log write failed.'
+           END-IF
            .
 
       ******************************************************************
